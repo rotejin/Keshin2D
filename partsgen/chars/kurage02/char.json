@@ -1707,5 +1707,10 @@
   "涙": "eye"
  },
  "eyeLineClip": true,
- "hatDome": true
+ "hatDome": true,
+ "hairWrap": 0.5,
+ "noseAxis": [
+  1495,
+  1513
+ ]
 }
