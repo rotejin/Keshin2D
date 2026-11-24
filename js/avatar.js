@@ -84,6 +84,10 @@ const TUNE = [
   // 斜めを向いたとき、顔の中心線を傾ける（0 で前と同じ = 上下を向いても、左右の位置が変わらない）。
   // 下を向くと目が先へ、上を向くとあご先が先へ出る（頭を、立体として回したときの動き）。あご先の高さを支点に、頭の全体（髪・帽子も）を横へずらす。tiltT
   { key: 'headTilt', label: '斜めで、顔の中心線を傾ける', min: 0, max: 1.6, def: 0 },
+  // 下を向いたとき、ほほの輪郭を、目と一緒に下げる（0 で前と同じ = 輪郭のいちばん広い所は動かず、目だけが、あごへ向かって細くなる所まで滑り下りる。
+  // 目の大きいキャラでは、白目の外の端が、輪郭の外へ出る）。斜め下では、奥のほほの輪郭を、向きに応じて、さらに下げて、少しふくらませる
+  // （奥の輪郭は、頭の横ではなく、ほほの前の面でできる）。あご先と、頭のてっぺんは、動かさない。surfMap の Z0D2
+  { key: 'faceDown', label: '下向きで、ほほの輪郭を、目と一緒に下げる', min: 0, max: 1.5, def: 0 },
   // 振り向いたとき、髪が取り残されて流れる強さ（0 で前と同じ。前の髪と後ろ髪は逆向きに流れる）
   { key: 'turn', label: '振り向きの髪の流れ', min: 0, max: 2, def: 1 },
   // 動きの味付け（どれも 0 で前と同じ）
@@ -353,6 +357,11 @@ const knots = (pts) => (y) => {         // なめらかな折れ線
 // 元の輪郭をなめらかな式で写すだけなので、輪郭の形は崩れない（前の版は行ごとに稜線を解いていて、こぶができた）。
 // 顔の端から EDGE_BAND px の帯は伸び縮みさせず端と一緒に動かす（輪郭線の太さを保ち、線と肌のふちをずらさない）
 const EDGE_BAND = 44;
+// tune.faceDown の調整値（?fdA= などで試せる）。a・b: ほお骨の高さ（745）と、ほほの下（880）の、端の奥行き（R0 の倍率）。
+// k: 斜め下で、奥の端を、向きに応じて深くする量（奥の輪郭は、ほほの前の面でできる。R0·sin(左右) の倍率）。g: 斜め下での、奥のほほのふくらみの足し
+// s: 左右の向きに対する、k・g の立ち上がりの速さ（小さいほど、少し横を向いただけで効く。目は、少し横を向いただけで、奥の輪郭へ寄るので、
+// 向きの sin に比例させると、左右 10〜20°のときに、いちばん余裕が小さくなった）
+const FD = { a: q.has('fdA') ? +q.get('fdA') : 0.5, b: q.has('fdB') ? +q.get('fdB') : 0.72, k: q.has('fdK') ? +q.get('fdK') : 0.8, g: q.has('fdG') ? +q.get('fdG') : 0.14, s: q.has('fdS') ? +q.get('fdS') : 0.25 };
 let z0pFn = null;
 const SKIN = {
   R: (y) => { const f = clamp(y - FACE_ROWS.y0, 0, FACE_ROWS.R.length - 1), i = Math.min(Math.floor(f), FACE_ROWS.R.length - 2); return Math.max(lerp(FACE_ROWS.R[i], FACE_ROWS.R[i + 1], f - i) - EDGE_BAND, 6); },
@@ -360,6 +369,10 @@ const SKIN = {
   Z0: (y) => 0.8 * R0 * Math.pow(clamp((y - 880) / 287, 0, 1), 1.3),   // 頬の高さから下は、あご先へ向かって前に出る（横を向くと、幅を保ったまま向いた側へずれる）
   Z0P: (y) => (z0pFn || (z0pFn = knots([[586, 0], [745, -0.6 * R0], [871, -0.75 * R0], [1019, 0], [1167, PITCH.chinUp * R0]])))(y),
   Z0D: knots([[745, 0], [880, 0.1 * R0], [980, 0.85 * R0], [1167, 0.95 * R0]]),
+  // tune.faceDown のときの、下向きの端の奥行き: こめかみから下を、なだらかに深くする（ほお骨のあたりで 0.4〜0.6·R0）。
+  // 上の Z0D は、ほお（745〜880）がほとんど動かず、その下（880〜980）だけが 2 倍に伸びるので、下を向くと、顔のいちばん広い所が上に残り、
+  // 目（150 画素 下がる）が、あごへ向かって細くなる所まで来て、白目の外の端が、輪郭の外へ出た
+  Z0D2: knots([[600, 0], [745, FD.a * R0], [880, FD.b * R0], [980, 0.85 * R0], [1167, 0.95 * R0]]),
   crown: true,
   band: EDGE_BAND, k: 1,
   bulge: (y) => 0.17 + 0.1 * Math.exp(-(((y - 960) / 170) ** 2)),
@@ -406,14 +419,23 @@ function surfMap(S, x, y, out) {
   if (A > lim) A = lim; else if (A < -lim) A = -lim;
   const bell = 1 - Math.pow(Math.abs(u), 1.5);
   const z = z0 + A * bell;
-  // 上下用の奥行き（輪郭の端だけ別の値。中央は同じ）
-  let zP = z;
-  if (S.Z0P) { const e = (pose.down > 0 && S.Z0D ? S.Z0D(y) : S.Z0P(y)) * tune.depth, Ap = clamp(S.Zc(y) * tune.depth - e, -1.2 * R, Math.max(1.2 * R, A)); zP = e + Ap * bell; }
   const near = Math.pow((1 - us) / 2, 1.5), far = ((1 + us) / 2) ** 2;
+  // 上下用の奥行き（輪郭の端だけ別の値。中央は同じ）
+  let zP = z, fdG = 0;
+  if (S.Z0P) {
+    let e = pose.down > 0 && S.Z0D ? S.Z0D(y) : S.Z0P(y);
+    if (tune.faceDown > 0 && pose.down > 0 && S.Z0D && S.Z0D2) {   // 下向きで、ほほの輪郭を、目と一緒に下げる（斜め下では、奥のほほを、さらに下げてふくらませる）
+      const fw = sstep(600, 760, y) * (1 - sstep(980, 1120, y)) * far, asF = 0.5 * Math.tanh(as / FD.s) / Math.tanh(0.5 / FD.s);
+      e = lerp(e, S.Z0D2(y), Math.min(tune.faceDown, 1)) + tune.faceDown * FD.k * R0 * asF * fw;
+      fdG = tune.faceDown * FD.g * -pose.sinP * fw * asF;
+    }
+    e *= tune.depth;
+    const Ap = clamp(S.Zc(y) * tune.depth - e, -1.2 * R, Math.max(1.2 * R, A)); zP = e + Ap * bell;
+  }
   const topW = S.crown ? 1 - sstep(FACE_TOP + 0.06 * FACE_H, FACE_TOP + 0.41 * FACE_H, y) : 0;
   const crownX = sg * as * R0 * topW * 0.2;
   // (3) 奥側の端のふくらみ: 奥を向いた側は頬の丸みが輪郭になるので、少し外へ出る（最大 +0.11R）
-  out[0] = HX + u * R + over + z * sY + sg * (R + S.band) * ((1 - pose.cosY) * near + S.bulge(y) * as * far * (1 - topW)) + crownX + tiltT * (y - TILT_Y0);
+  out[0] = HX + u * R + over + z * sY + sg * (R + S.band) * ((1 - pose.cosY) * near + S.bulge(y) * as * far * (1 - topW) + fdG * (1 - topW)) + crownX + tiltT * (y - TILT_Y0);
   out[1] = pitchY(y, zP * pose.cosY);
 }
 // 上下の回転。軸は目の高さ。上を向くと手前（奥行き +）は上がり、後ろ（耳）は下がる

@@ -211,7 +211,8 @@
   "faceFit": 1,
   "mouthFit": 1,
   "eyeFit": 1,
-  "headTilt": 1
+  "headTilt": 1,
+  "faceDown": 1
  },
  "params": {
   "mouthForm": -0.1,
@@ -1668,5 +1669,10 @@
  "key_eye_dy": 6,
  "key_eye_rest": 0.96,
  "iris_scale": 0.95,
- "neck_clean": true
+ "neck_clean": true,
+ "head_fit_jaw": true,
+ "diffAttach": {
+  "涙": "eye"
+ },
+ "eyeLineClip": true
 }

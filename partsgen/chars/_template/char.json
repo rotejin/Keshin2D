@@ -17,7 +17,7 @@
   "段階 6b（小物）: ヘアピンが何本もあれば pin_split: true。ツノ・ヘッドホン・ピアスなど硬い物は extras.physics の frame・type rigid・振り子の stiff（WORKFLOW.md の「硬い小物」）。どのレイヤーにも無い飾りは extras.layers の after で足す（ピアスは after 耳L/耳R）。頭より上へ出る物は pad_top・view を合わせる",
   "段階 6c（口・鼻）: 閉じた口にも歯が見える絵柄は mouthKeySharp: 8。下を向いて口が大きく見えたら tune.mouthDownSize・mouthPitchBend（例 0.8・0.3）。鼻の絵が顔の中心線の片側にあって、横を向くと鼻が線になるときは noseAxis [左を向くとき, 右を向くとき]",
   "段階 8: ユーザーが画面で書き出した値（tune・params・mouthVector・physics_tune・mouthShapes・keyMouthShapes・eyeTune）を入れる。params は、書き出しにある項目だけ置き換える（browShow などを消さない）。入れる前に、今の値と 1 項目ずつ比べて、変わった項目を確かめる（変わっていない項目は、さわっていない値）",
-  "tune の向きの上限（yawMax 30・upMax 16・downMax 28・rollMax 25）と lash・browBounce・faceFit・mouthFit・eyeFit・headTilt は、kurage02 で、動かして見ながら決めた値。止まる所 2 で、9 方向ボタンで見てもらい、好みの値に置き換える（崩れにくい控えめな上限は 左右 14・上 5・下 4・かしげ 20）",
+  "tune の向きの上限（yawMax 30・upMax 16・downMax 28・rollMax 25）と lash・browBounce・faceFit・mouthFit・eyeFit・headTilt・faceDown は、kurage02 で、動かして見ながら決めた値（faceDown は、下を向いたとき、目が輪郭の外へ出ないように、ほほの輪郭を目と一緒に下げる。0 で前の動き）。止まる所 2 で、9 方向ボタンで見てもらい、好みの値に置き換える（崩れにくい控えめな上限は 左右 14・上 5・下 4・かしげ 20）",
   "tune のほかの値・params・eyeTune は、手本のキャラで動かしながら決めた値。止まる所 2 のあと、ユーザーが画面で決めた値に置き換える",
   "段階 0（アホ毛があるキャラ）: アホ毛は、房にも、髪のデザインの絵にも入れない。別に 1 枚描かせて（extras.jobs の 40 以降）、extras.layers に {\"name\": \"アホ毛\", \"job\": \"40\", \"after\": \"前髪1\", \"path\": \"結び髪\", \"under\": <根元を覆う房の名前>}、extras.physics に {\"id\": \"ahoge\", \"label\": \"アホ毛\", \"type\": \"sprout\", \"layers\": [\"アホ毛\"], \"pivot\": <根元（箱の中の割合）>, \"frame\": {\"follow\": \"auto\"}}（WORKFLOW.md の「アホ毛」）。動きは、livecap.mjs --probe と physstat.py で数えて確かめる（先の山が 3〜4 個・1.2 秒以内で止まる。小さな毛束は、physics に \"k\": 150 前後・\"c\": 8 前後、大きな輪は、初期の値 k 90・c 6.6 のまま）",
   "段階 6（顔。fidscale.py の顔の拡大で、基準画像と比べて決める）: head_fit_jaw（true。あごの線の左右のまん中が、基準と 10 画素より ずれるとき）・head_fit_pad（[0, 0, 0, 下]。あご先が高い = あごが短いとき）・head_tone_gain（true。head_tone: 0 のキャラで、肌の色が全体にずれるとき）・bang_shadow（{\"opacity\": 0}。基準画像に、髪の影が無いとき）・iris_mirror（true。左右の瞳が鏡写しの絵柄）・key_mouth_scale（{\"closed\": 倍率}。閉じた口の幅が、基準と 1 割より 違うとき）",
@@ -227,7 +227,8 @@
   "faceFit": 1,
   "mouthFit": 1,
   "eyeFit": 1,
-  "headTilt": 1
+  "headTilt": 1,
+  "faceDown": 1
  },
  "params": {
   "mouthForm": -0.1,
