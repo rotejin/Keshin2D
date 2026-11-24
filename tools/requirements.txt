@@ -1,0 +1,5 @@
+# Libraries for the character tools (partsgen/tools). Not needed for the viewer (tools/serve.py).
+# Keep this file ASCII only: older pip reads it with the system encoding (cp932 on Japanese Windows).
+numpy>=1.26
+opencv-python>=4.9
+pillow>=10.0

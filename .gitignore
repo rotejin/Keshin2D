@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# 撮影・作業の一時ファイル
+prof_*/
+log_*.txt
+*.new/
+# 変える前のエンジンと比べるための一時の写し（partsgen/WORKFLOW.md の「回帰テスト」）
+_base.html
+js/_base.js
+
+# 拡大（Real-ESRGAN）の置き場所と設定（各自で入手する。partsgen/UPSCALER.md）
+partsgen/vendor/
+partsgen/upscaler.json
+
+# OS・エディタ
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+
+# 自分で作ったモデル・設定・起動用の bat（公開リポジトリへ、うっかり入れない。入れるときは git add -f）
+models/*/
+!models/kurage02/
+partsgen/chars/*/
+!partsgen/chars/_template/
+!partsgen/chars/kurage02/
+start_*.bat

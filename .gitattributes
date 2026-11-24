@@ -1,0 +1,12 @@
+# 改行は LF にそろえる。.bat と .ps1 だけは CRLF（cmd.exe・古い PowerShell が LF のスクリプトを読み違えることがある）
+* text=auto eol=lf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+*.png binary
+*.jpg binary
+*.wasm binary
+*.task binary
+
+# 同梱した外部の物は、中身を変えない（SHASUMS256.txt と合わなくなる）
+vendor/** -text

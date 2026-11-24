@@ -1,0 +1,374 @@
+{
+ "_comment": "新しいキャラの出発点。chars/<キャラ名>/ へ写して使う。道具（eye.py・build.py・build2.py）は環境変数 CHARCFG でこのファイルを読む（pipeline.py が渡す）",
+ "_todo": [
+  "段階 1: src_face_box（元の絵が設定画のとき。src.png の中の、顔アップの頭の範囲）",
+  "段階 0: talkDemo（話しているデモのせりふ。キャラの名前を名乗るせりふに）。pad_top（頭頂より上へ大きく出る物が無ければ、消してよい）",
+  "段階 2（HD key の前）: hair.back の box（00_base の 3 倍の絵で、頭のまわりの全体 = 後ろ髪の全体が入り、余白が 1 割ほどの範囲。横 3:縦 2）。入っているのは kurage02 の値。grid.py で 00_base_3x.png を見て置く",
+  "段階 4: iris_hue・eyeL・eyeR・build・ear_ymax・tone_rg_min ほか色の条件（probe.py で測って、WORKFLOW.md の「キャラごとに置き直す値」の 2 つの表で決める）",
+  "段階 5c: extras.jobs の 61〜68 の ref.box（目 = _eyec_ref.json の box と同じ値。口 = 鼻の下〜あご先を横 3:縦 2 で囲む範囲。入っているのは kurage02 の値）。指示文は、共通の物（partsgen/tools/codex の key_eye1・key_eye2・sheet_mouth・key_mouth2）が自動で使われる（写さなくてよい。キャラ特有の事情を書き足すときだけ prompts/prompt_61〜68.txt へ写す）",
+  "段階 5b: hair の center_x・head_r・bangs_tip_y、front の box・whorl、front と back の kind・parts（top_cut は帽子の無いキャラで 0.45〜0.55）",
+  "段階 6: view（正面の絵を見て、いちばん上の物まで画面に入るように）",
+  "段階 6: key_eye_dy・key_eye_rest・iris_scale（fidscale.py の目の拡大で、基準画像と比べて決める）、browTint（髪の上に透かす眉が、髪と同じ色で見えないとき。例 [0.58, 0.5, 0.82]）、neck_clean（首が二重に見えるとき true。服が赤・肌色のキャラでは使わない）",
+  "段階 6c: mouthVector・mouthShapes は、キーの形の口では使われない（キーの絵が無いときの控え。そのままでよい）",
+  "段階 5c（絵柄による）: keyshape.py の eye の末尾に、輪郭線を黒で描く絵柄は --dark-static（eyec_ref_scale も広げる。例 1.45）、白目の上に赤みのある灰色の影があれば --white-shade、目尻のはねの中に暗い影があれば --lash-fill 1500〜4000（WORKFLOW.md 段階 5c の 5）",
+  "段階 6（目）: key_eye_scale（シートの目が大きいとき）・key_eye_slope（にらみの目尻に白い四角が出たら 3.5）・iris_dy（つり目で瞳が上まぶたに入り込む絵柄。fidscale.py で瞳孔の下の端と瞳の色の境目を測って決める。例 −20）",
+  "段階 6b（小物）: ヘアピンが何本もあれば pin_split: true。ツノ・ヘッドホン・ピアスなど硬い物は extras.physics の frame・type rigid・振り子の stiff（WORKFLOW.md の「硬い小物」）。どのレイヤーにも無い飾りは extras.layers の after で足す（ピアスは after 耳L/耳R）。頭より上へ出る物は pad_top・view を合わせる",
+  "段階 6c（口・鼻）: 閉じた口にも歯が見える絵柄は mouthKeySharp: 8。下を向いて口が大きく見えたら tune.mouthDownSize・mouthPitchBend（例 0.8・0.3）。鼻の絵が顔の中心線の片側にあって、横を向くと鼻が線になるときは noseAxis [左を向くとき, 右を向くとき]",
+  "段階 8: ユーザーが画面で書き出した値（tune・params・mouthVector・physics_tune・mouthShapes・keyMouthShapes・eyeTune）を入れる。params は、書き出しにある項目だけ置き換える（browShow などを消さない）",
+  "tune の向きの上限（yawMax 30・upMax 16・downMax 28・rollMax 25）と lash・browBounce・faceFit・mouthFit・eyeFit・headTilt は、kurage02 で、動かして見ながら決めた値。止まる所 2 で、9 方向ボタンで見てもらい、好みの値に置き換える（崩れにくい控えめな上限は 左右 14・上 5・下 4・かしげ 20）",
+  "tune のほかの値・params・eyeTune は、手本のキャラで動かしながら決めた値。止まる所 2 のあと、ユーザーが画面で決めた値に置き換える"
+ ],
+ "iris_hue": [
+  150,
+  275
+ ],
+ "iris_vmin": 0.35,
+ "eyeL": {
+  "box": [
+   1020,
+   1440,
+   1500,
+   1790
+  ],
+  "polys": [
+   [
+    [
+     0,
+     128
+    ],
+    [
+     30,
+     128
+    ],
+    [
+     62,
+     152
+    ],
+    [
+     84,
+     190
+    ],
+    [
+     112,
+     250
+    ],
+    [
+     136,
+     350
+    ],
+    [
+     0,
+     350
+    ]
+   ],
+   [
+    [
+     0,
+     0
+    ],
+    [
+     36,
+     0
+    ],
+    [
+     36,
+     88
+    ],
+    [
+     24,
+     100
+    ],
+    [
+     0,
+     100
+    ]
+   ]
+  ]
+ },
+ "eyeR": {
+  "box": [
+   1010,
+   1440,
+   1470,
+   1790
+  ],
+  "polys": [
+   [
+    [
+     0,
+     128
+    ],
+    [
+     40,
+     128
+    ],
+    [
+     72,
+     152
+    ],
+    [
+     94,
+     190
+    ],
+    [
+     122,
+     250
+    ],
+    [
+     146,
+     350
+    ],
+    [
+     0,
+     350
+    ]
+   ],
+   [
+    [
+     0,
+     0
+    ],
+    [
+     50,
+     0
+    ],
+    [
+     50,
+     90
+    ],
+    [
+     36,
+     100
+    ],
+    [
+     0,
+     100
+    ]
+   ]
+  ]
+ },
+ "build": {
+  "seed_head": [
+   1526,
+   1150
+  ],
+  "seed_neck": [
+   1560,
+   2150
+  ],
+  "brow_L": [
+   1085,
+   1320,
+   1460,
+   1440
+  ],
+  "brow_R": [
+   1620,
+   1320,
+   1990,
+   1440
+  ],
+  "nose": [
+   1500,
+   1700,
+   1620,
+   1830
+  ],
+  "mouth": [
+   1420,
+   1870,
+   1680,
+   1975
+  ]
+ },
+ "skip_hair_diff": true,
+ "ear_ymax": 2000,
+ "tone_head_gmin": 160,
+ "skin_rg_min": 20,
+ "eye_fill_holes": true,
+ "tone_head_white": true,
+ "ear_dark": [
+  0.33,
+  1.0
+ ],
+ "pad_top": 300,
+ "view": {
+  "cy": 830,
+  "zoom": 0.85
+ },
+ "tune": {
+  "yawMax": 30,
+  "upMax": 16,
+  "downMax": 28,
+  "rollMax": 25,
+  "depth": 0.85,
+  "sway": 1.8,
+  "solid": 1,
+  "turn": 0.5,
+  "strand": 1,
+  "fluff": 1,
+  "exprLive": 1,
+  "link": 1,
+  "bodyMove": 1,
+  "lash": 1,
+  "browBounce": 1,
+  "faceFit": 1,
+  "mouthFit": 1,
+  "eyeFit": 1,
+  "headTilt": 1
+ },
+ "params": {
+  "mouthForm": -0.1,
+  "mouthWidth": 0.91,
+  "browShow": 0.55
+ },
+ "browAmp": 22,
+ "lashOver": 0,
+ "lidShadow": [
+  9,
+  0.42
+ ],
+ "extras": {
+  "_comment": "61〜68 は、キーの形のシート（目 2 種・口 2 種 × 2 案。WORKFLOW.md の段階 5c）。box は kurage02 の値なので、必ず置き直す（目 = _eyec_ref.json の box、口 = 鼻の下〜あご先を横 3:縦 2 で囲む範囲。01_base_nohair の 3 倍の絵の画素）。\"sheet\": true は、キーの形のシートの目印（PY place を番号なしで走らせたとき、シートは置かない）。揺れ物は、jobs・layers・physics に足す（体の飾りの下に敷く体を描かせるときは、jobs と layers の両方に書く。WORKFLOW.md の段階 6b）",
+  "jobs": {
+   "61": {"out": "61_key_eye1", "ref": {"name": "eye", "from": "01_base_nohair", "box": [1006, 1403, 1606, 1803], "pad": 0.0, "long": 1536, "bg": [255, 255, 255]}, "sheet": true},
+   "65": {"out": "65_key_eye1b", "ref": {"name": "eye", "from": "01_base_nohair", "box": [1006, 1403, 1606, 1803], "pad": 0.0, "long": 1536, "bg": [255, 255, 255]}, "sheet": true},
+   "63": {"out": "63_key_eye2", "ref": {"name": "eye", "from": "01_base_nohair", "box": [1006, 1403, 1606, 1803], "pad": 0.0, "long": 1536, "bg": [255, 255, 255]}, "sheet": true},
+   "67": {"out": "67_key_eye2b", "ref": {"name": "eye", "from": "01_base_nohair", "box": [1006, 1403, 1606, 1803], "pad": 0.0, "long": 1536, "bg": [255, 255, 255]}, "sheet": true},
+   "62": {"out": "62_mouth_sheet", "ref": {"name": "mouth", "from": "01_base_nohair", "box": [1249, 1790, 1849, 2190], "pad": 0.0, "long": 1536, "bg": [255, 255, 255]}, "sheet": true},
+   "66": {"out": "66_mouth_sheetb", "ref": {"name": "mouth", "from": "01_base_nohair", "box": [1249, 1790, 1849, 2190], "pad": 0.0, "long": 1536, "bg": [255, 255, 255]}, "sheet": true},
+   "64": {"out": "64_mouth_sheet2", "ref": {"name": "mouth", "from": "01_base_nohair", "box": [1249, 1790, 1849, 2190], "pad": 0.0, "long": 1536, "bg": [255, 255, 255]}, "sheet": true},
+   "68": {"out": "68_mouth_sheet2b", "ref": {"name": "mouth", "from": "01_base_nohair", "box": [1249, 1790, 1849, 2190], "pad": 0.0, "long": 1536, "bg": [255, 255, 255]}, "sheet": true}
+  },
+  "layers": [],
+  "physics": []
+ },
+ "mouthVector": {
+  "line": "#9a3a40",
+  "lineWidth": 3.5,
+  "inside": [
+   "#c94f5e",
+   "#d45c68"
+  ],
+  "tongue": "#ff8a92",
+  "teeth": "#ffffff",
+  "teethMax": 16,
+  "style": 2,
+  "tongueLight": "#ff9aa0"
+ },
+ "head_dark_fix": 0.35,
+ "feature_grow": 21,
+ "lash_solid": 7,
+ "mouth_smooth": 6,
+ "mouthShapes": {
+  "a": {
+   "open": 0.53,
+   "width": 0.88,
+   "y": -0.3,
+   "lift": 0.28,
+   "round": 0.38,
+   "top": 0.53,
+   "point": 0,
+   "teeth": 0
+  },
+  "i": {
+   "open": 0.24,
+   "width": 0.87,
+   "y": 0,
+   "lift": 0.55,
+   "round": 0.87,
+   "top": 0.04,
+   "point": 0,
+   "teeth": 1
+  },
+  "u": {
+   "open": 0.4,
+   "width": 0.45,
+   "y": 0.01,
+   "lift": 0.45,
+   "round": 0.8,
+   "top": 0.17,
+   "point": 0,
+   "teeth": 0
+  },
+  "e": {
+   "open": 0.39,
+   "width": 0.91,
+   "y": -0.32,
+   "lift": 0.21,
+   "round": 0.46,
+   "top": -0.06,
+   "point": 0,
+   "teeth": 0
+  },
+  "o": {
+   "open": 0.6,
+   "width": 0.58,
+   "y": -0.55,
+   "lift": 0.17,
+   "round": 1,
+   "top": 0.19,
+   "point": 0,
+   "teeth": 0
+  }
+ },
+ "talkDemo": "こんにちは、＜なまえ＞です。きょうも いちにち、よろしくおねがいします。えへへ、うまく しゃべれてるかな。みてくれて、ありがとー。",
+ "eyeTune": {
+  "puru": 1,
+  "lens": 1,
+  "shimmer": 1,
+  "gazeBounce": 1
+ },
+ "hair": {
+  "clumps": {
+   "each": true
+  },
+  "center_x": 1525,
+  "head_r": 520,
+  "bangs_tip_y": 1640,
+  "tone_ref": "00_base",
+  "tone_mask": "03b_front_hair_only",
+  "front": {
+   "adjust": {},
+   "top_cut": 0.5,
+   "widen": 0.08,
+   "widen_side": 0.3,
+   "parts": [],
+   "from": "03b_front_hair_only",
+   "box": [
+    735,
+    690,
+    2335,
+    2290
+   ],
+   "size": [
+    1024,
+    1024
+   ],
+   "kind": "前の髪（前髪・頭頂・顔の横の髪）",
+   "whorl": [
+    640,
+    75
+   ],
+   "base": true
+  },
+  "back": {
+   "dedupe_contain": 0,
+   "parts": [],
+   "from": "04_back_hair",
+   "box": [
+    325,
+    740,
+    2725,
+    2340
+   ],
+   "size": [
+    1536,
+    1024
+   ],
+   "kind": "後ろ髪（頭の後ろ側の髪。上の丸いドームが後頭部で、そこから毛束が下りる）",
+   "cap": true,
+   "under": false
+  }
+ }
+}
