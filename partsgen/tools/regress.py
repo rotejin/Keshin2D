@@ -219,7 +219,7 @@ def sheet(o):
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(); sub = ap.add_subparsers(dest="cmd", required=True)
-    a = sub.add_parser("shoot"); a.add_argument("model"); a.add_argument("out"); a.add_argument("--only"); a.add_argument("--size", type=int, default=1100); a.add_argument("--poses"); a.add_argument("--ui", action="store_true", help="調整パネルを出したまま撮る"); a.add_argument("--page", default="index.html"); a.add_argument("--timeout", type=int, default=60, help="1 枚を待つ秒数（パーツの多いモデルは遅い）"); a.add_argument("--jobs", type=int, default=2, help="同時に動かす Chrome の数（GPU で描くので、2 つで足りる。PC を重くしない）"); a.add_argument("--legacy", action="store_true", help="以前の撮り方（1 枚ごとに Chrome を起動し直す。遅い）"); a.set_defaults(f=shoot)
+    a = sub.add_parser("shoot"); a.add_argument("model"); a.add_argument("out"); a.add_argument("--only"); a.add_argument("--size", type=int, default=1100); a.add_argument("--poses"); a.add_argument("--ui", action="store_true", help="操作パネルを出したまま撮る"); a.add_argument("--page", default="index.html"); a.add_argument("--timeout", type=int, default=60, help="1 枚を待つ秒数（パーツの多いモデルは遅い）"); a.add_argument("--jobs", type=int, default=2, help="同時に動かす Chrome の数（GPU で描くので、2 つで足りる。PC を重くしない）"); a.add_argument("--legacy", action="store_true", help="以前の撮り方（1 枚ごとに Chrome を起動し直す。遅い）"); a.set_defaults(f=shoot)
     a = sub.add_parser("compare"); a.add_argument("a"); a.add_argument("b"); a.add_argument("--out"); a.add_argument("--tol", type=int, default=2); a.set_defaults(f=compare)
     a = sub.add_parser("sheet"); a.add_argument("dir"); a.add_argument("outfile"); a.add_argument("--only"); a.add_argument("--cols", type=int, default=4); a.add_argument("--cell", type=int, default=800); a.set_defaults(f=sheet)
     o = ap.parse_args(); o.f(o)

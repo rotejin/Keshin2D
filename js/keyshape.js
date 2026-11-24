@@ -246,7 +246,7 @@ export function setupKeyShapes(env) {
         if (q.open) wo += w; else wl += w;
       }
       km.openAmt = wo;
-      // 母音ごとの形の足し（avatar.js の KM_SHAPE。調整パネルの「母音の口の形」）: 重みで混ぜた倍率で、閉じた口のまん中の線から
+      // 母音ごとの形の足し（avatar.js の KM_SHAPE。操作パネルの「母音の口の大きさ」）: 重みで混ぜた倍率で、閉じた口のまん中の線から
       // 縦に伸び縮み（開き）、口のまん中から横に伸び縮み（幅）、上下にずらす（口の幅の 0.12 倍が 1）。絵は、この線に沿って変形する
       const SM = km.shapeMod;
       if (SM) {

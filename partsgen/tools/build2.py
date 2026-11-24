@@ -1329,7 +1329,7 @@ if PIN_PIECES:
     MODEL["rigidPins"] = {n_: {"anchor": c_, "follow": cover_clump_(*c_)} for n_, c_ in PIN_PIECES.items()}
     print("rigidPins:", {n_: v_["follow"] for n_, v_ in MODEL["rigidPins"].items()})
 if CHAR.get("talkDemo"):
-    MODEL["talkDemo"] = CHAR["talkDemo"]            # 「話しているデモ」のせりふ（ひらがな）
+    MODEL["talkDemo"] = CHAR["talkDemo"]            # 「口パクデモ」のせりふ（ひらがな）
 if CHAR.get("mouthShapes"):
     MODEL["mouthShapes"] = CHAR["mouthShapes"]      # 母音ごとの口の形（画面の「母音の口の形」で決めて書き出した値）
 if CHAR.get("eyeTune"):

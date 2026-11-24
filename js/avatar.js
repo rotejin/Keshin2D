@@ -60,10 +60,10 @@ const TUNE = [
   // 可動域。スライダーやマウス・カメラをいっぱいに振ったとき、実際に何度まで回すか。
   // 左右 41°・上 13°・下 30°まで振ると崩れるので、9 方向のボタンで見ながら決めた値を既定にしている。
   // モデルごとの値は model.json の tune で置き換える
-  { key: 'yawMax', label: '左右の上限(°)', min: 5, max: 33, def: 20 },
-  { key: 'upMax', label: '上向きの上限(°)', min: 0, max: 16, def: 5 },
-  { key: 'downMax', label: '下向きの上限(°)', min: 0, max: 31, def: 5 },
-  { key: 'rollMax', label: 'かしげの上限(°)', min: 0, max: 25, def: 18 },
+  { key: 'yawMax', label: '左右の上限(°)', min: 5, max: 33, def: 20, step: 0.5 },
+  { key: 'upMax', label: '上向きの上限(°)', min: 0, max: 16, def: 5, step: 0.5 },
+  { key: 'downMax', label: '下向きの上限(°)', min: 0, max: 31, def: 5, step: 0.5 },
+  { key: 'rollMax', label: 'かしげの上限(°)', min: 0, max: 25, def: 18, step: 0.5 },
   { key: 'depth', label: '顔の奥行き', min: 0.5, max: 1.3, def: 1 },
   { key: 'sway', label: '髪の揺れやすさ', min: 0, max: 2.5, def: 1.5 },
   // 横を向いたとき、鼻と口を「立体の上にある物」らしく動かす強さ（0 で前と同じ。位置を余分にずらし、奥の側を詰めて手前の側を伸ばす）
@@ -108,6 +108,17 @@ const target = {}, cur = {}, tune = {}, eyeTune = {};
 for (const t of EYE_TUNE) eyeTune[t.key] = t.def;
 for (const p of PARAMS) target[p.key] = cur[p.key] = p.def;
 for (const t of TUNE) tune[t.key] = t.def;
+// 使う人の好み（操作パネルの「好みに合わせる」）。キャラの初期値（髪の揺れ・揺れ物の大きさ・体の動き・瞳の動き）に掛ける倍率。
+// 1 なら、キャラを作った人が決めた動きのまま（キャラの初期値とは別に、モデルごとにブラウザへ保存する）
+const USER_ITEMS = [
+  { key: 'sway', label: '髪と飾りの揺れ', min: 0, max: 1.5, def: 1, step: 0.05 },
+  { key: 'body', label: '体の動き（呼吸・ゆれ）', min: 0, max: 1.5, def: 1, step: 0.05 },
+  { key: 'puru', label: '瞳のぷるん', min: 0, max: 1.5, def: 1, step: 0.05 },
+];
+const USER = {}; for (const u of USER_ITEMS) USER[u.key] = u.def;
+// URL の set=（JSON）で、調整の値をまとめて渡せる（「OBS 用の URL をコピー」が作る。ブラウザに保存した値より優先）
+const URLSET = (() => { try { return JSON.parse(q.get('set') || 'null') || {}; } catch (e) { return {}; } })();
+const urlNum = (group, key, cur, min, max) => { const v = (URLSET[group] || {})[key]; return typeof v === 'number' && isFinite(v) ? Math.min(max, Math.max(min, v)) : cur; };
 
 // 表情プリセット。eyeMul は目の開きに掛ける倍率、ほかは足し込み
 // 口は、口角の上がり下がり（mouthForm）だけで表す。口の開き・幅・位置は、通常のまま変えない
@@ -682,7 +693,7 @@ let eyeRest = 1;       // 今の表情での「開いた目」の開き（細め
 const puruTmp = [0, 0];
 // 位置のゆれは、視線が動いたとき・頭が動いたときに、ばねを弾く
 function stepEyeJig(dt, dv, dvy, time) {
-  const steps = Math.max(1, Math.ceil(dt / 0.008)), h = dt / steps, amt = tune.sway / 1.5, ts = time / 1000;
+  const steps = Math.max(1, Math.ceil(dt / 0.008)), h = dt / steps, amt = tune.sway * USER.sway / 1.5, ts = time / 1000;
   const follow = 1 - Math.exp(-dt * 38);
   for (const key of ['R', 'L']) {
     const e = eyes[key], j = e.jig, late = key === 'L';   // 画面右の目は 26ms 遅らせ、少し小さく揺らす（左右がそろいすぎないように）
@@ -729,13 +740,13 @@ function stepSway(dt, time) {
   const one1 = (s, g, K, C, G, seed) => {   // s: ばねの状態、g: 種類ごとの値、K・C・G: 速さ・止まりやすさ・大きさ
     if (forcedSway !== null) { s.phi = s.phi2 = forcedSway; s.by = q.has('swayBy') ? +q.get('swayBy') : 0; return; }
     // 振り向きのぶん: 前と同じ「頭の横位置の目安」に入っていた分（150px）を引いて、その髪の前後の位置に応じた分に置き換える
-    const yv = yawV * (g.z * g.turn - 150 / R0) * tune.turn;
+    const yv = yawV * (g.z * g.turn - 150 / R0) * tune.turn * USER.sway;
     const dyv = yv - s.yv; s.yv = yv;
     s.ys += (yv - s.ys) * (1 - Math.exp(-dt * 14));                 // ならした速さ（流れる量に使う）
-    const flow = clamp(s.ys * 0.00022 * g.drag * tune.sway / 1.5, -0.16, 0.16);
+    const flow = clamp(s.ys * 0.00022 * g.drag * tune.sway * USER.sway / 1.5, -0.16, 0.16);
     const rest = -roll * g.grav - flow + 0.006 * Math.sin(time * 0.0011 + seed) * (idle ? 1 : 0);
-    s.w -= ((dv + dyv) * G * tune.sway) / 900;
-    s.wy -= (dvy * G * tune.sway) / 1500;
+    s.w -= ((dv + dyv) * G * tune.sway * USER.sway) / 900;
+    s.wy -= (dvy * G * tune.sway * USER.sway) / 1500;
     for (let i = 0; i < steps; i++) {
       s.w += (-K * (s.phi - rest) - C * s.w) * h;
       s.phi += s.w * h;
@@ -992,7 +1003,7 @@ const bangsGroup = (name) => (/前髪[67]|エアインテーク/.test(name) ? 's
 
 // ---- 揺れ物（model.json の physics）------------------------------------------
 // 髪のほかに揺らしたい物（帽子、髪飾りの鎖、胸のリボンなど）を、キャラごとの設定で指定する。エンジンはキャラを知らない。
-//   id・label   調整パネルと書き出しで使う名前
+//   id・label   操作パネル（「飾りごとに決める」「揺れ物」）と書き出しで使う名前。label は、使う人が読んで分かる言葉にする
 //   layers      動かすレイヤーの名前（複数可。最初の 1 枚の箱を、支点と長さの基準にする）
 //   attach      何に付いているか。'hat' 頭（帽子と同じ動き）/ 'pin' 頭（髪飾りと同じ。向きで曲げない）/ 'body' 体
 //   type        'jelly'    ぷるんと弾む。支点より上は伸び縮みしながら遅れて揺れ、支点より下（ふち）はさらに遅れて波打つ
@@ -1020,7 +1031,7 @@ const PHYS = [], PHYS_BY_ID = {}, PHYS_BY_LAYER = {};
 for (const spec of model.physics || []) {
   const base = byName[(spec.layers || [])[0]];
   if (!base || !PHYS_DEF[spec.type]) continue;
-  const s = Object.assign({}, PHYS_DEF[spec.type], spec, { phi: 0, w: 0, phi2: 0, w2: 0, by: 0, wy: 0, seed: PHYS.length * 1.7 });
+  const s = Object.assign({}, PHYS_DEF[spec.type], spec, { phi: 0, w: 0, phi2: 0, w2: 0, by: 0, wy: 0, seed: PHYS.length * 1.7, ug: 1 });   // ug: 使う人の好みの倍率（「好みに合わせる」の、飾りごとの揺れ）
   const pv = spec.pivot || [0.5, 0];
   s.px = base.x + pv[0] * base.w; s.py = base.y + pv[1] * base.h;
   s.len = Math.max(8, (typeof spec.len === 'number' ? spec.len : 1 - pv[1]) * base.h);   // 支点から先（下）の長さ
@@ -1112,8 +1123,9 @@ function stepPhys(dt, dv, dvy, roll, time) {
     // 振り子は、頭（体）の傾きと同じ向きに振ると真下へ垂れる（headPose・bodyT は、roll が正で時計回り）。
     // 前は、振り子も布と同じ −roll で、傾きの 2 倍、横へ倒れていた（鎖・ピアスなど）。布の向きは、目で合わせてあるので変えない
     const rest = -(onBody ? body.roll : roll) * s.grav * (s.type === 'pendulum' ? -1 : 1) + 0.004 * Math.sin(time * 0.0013 + s.seed) * (idle ? 1 : 0);
-    s.w -= (a * s.gain) / 550;
-    s.wy -= (ay * s.gain) / 1100 + (Math.abs(a) * s.gain) / 9000;      // 横に動いたときも、少し縦に弾む
+    const sg = s.gain * USER.sway * s.ug;   // 大きさ = キャラの初期値 × 使う人の好み（全体 × 飾りごと）
+    s.w -= (a * sg) / 550;
+    s.wy -= (ay * sg) / 1100 + (Math.abs(a) * sg) / 9000;      // 横に動いたときも、少し縦に弾む
     for (let i = 0; i < steps; i++) {
       s.w += (-s.k * (s.phi - rest) - s.c * s.w) * h;
       s.phi += s.w * h;
@@ -1144,9 +1156,9 @@ function eyePart(L, key) {
       const dx = x - e.cx, dy = y - e.cy;
       const r2 = (dx * dx) / (e.lrx * e.lrx) + (dy * dy) / (e.lry * e.lry);
       const m = r2 < 1 ? Math.pow(1 - r2, 2.2) : 0;
-      const P = eyeTune.puru, Lm = eyeTune.lens * m * 4;
-      const sx = 1 + P * j.px * (0.15 + Lm * 0.32) + eyeTune.shimmer * 4 * m * j.sh;
-      const sy = 1 + P * j.py * (0.15 + Lm * 0.28) - eyeTune.shimmer * 4 * m * j.sh * 0.45;
+      const P = eyeTune.puru * USER.puru, Lm = eyeTune.lens * USER.puru * m * 4;
+      const sx = 1 + P * j.px * (0.15 + Lm * 0.32) + eyeTune.shimmer * USER.puru * 4 * m * j.sh;
+      const sy = 1 + P * j.py * (0.15 + Lm * 0.28) - eyeTune.shimmer * USER.puru * 4 * m * j.sh * 0.45;
       const ik = 1 + 0.2 * (F.irisSize || 0);   // 表情の「瞳の大きさ」（見開きで小さく）
       const px = e.cx + dx * sx * ik + j.jx * k, py = e.cy + dy * sy * ik + j.jy * k;
       e.group.apply(px + e.gx * 20 * hl, py + e.gy * 13 * hl + (1 - Math.min(e.open, 1)) * 10, out);
@@ -1966,11 +1978,8 @@ const VIEW = { cx: +(q.get('cx') || MV.cx || 1500), cy: +(q.get('cy') || MV.cy |
   }, { passive: false });
   const resetView = () => { Object.assign(VIEW, VIEW0); saveView(); };
   view.addEventListener('dblclick', resetView);
-  const hb = $('#hide');
-  if (hb && hb.parentElement) {
-    const b = document.createElement('button'); b.textContent = '配置を戻す'; b.title = 'ドラッグで位置、ホイールで大きさを変えられます。ダブルクリックでも戻せます';
-    b.addEventListener('click', resetView); hb.parentElement.appendChild(b);
-  }
+  const rb = $('#viewreset');
+  if (rb) rb.addEventListener('click', resetView);
 }
 const F = {};          // 表情プリセットを足し込んだ、最終的なパラメータ
 const smileSide = { R: 1, L: 1 };   // 笑いの目の、片目ずつの効き（台本で、ウインクの開けている方の目を細めないために使う。ふだんは 1）
@@ -2023,13 +2032,13 @@ function render(time, dt) {
 
   // --- 体と頭の姿勢 ---
   // 呼吸: 吸うのは速く、吐くのはゆっくり（tune.bodyMove。0 で前と同じ、同じ速さの行き来）
-  const bm = tune.bodyMove, bm1 = Math.min(bm, 1), bp = time * 0.0018;
+  const bm = tune.bodyMove * USER.body, bm1 = Math.min(bm, 1), bp = time * 0.0018;
   const breath = idle ? Math.sin(bp + 0.45 * bm1 * Math.sin(bp)) : 0;
-  body.breath = (breath * 0.5 + 0.5) * (1 + 0.25 * bm1);
+  body.breath = (breath * 0.5 + 0.5) * (1 + 0.25 * bm1) * USER.body;
   body.sh = idle ? (breath * 0.5 + 0.5) * 3.2 * bm : 0;
-  body.hb = idle ? Math.sin(bp - 0.5 * bm1 + 0.45 * bm1 * Math.sin(bp - 0.5 * bm1)) : 0;   // 頭は、体より少し遅れて上下する
+  body.hb = idle ? Math.sin(bp - 0.5 * bm1 + 0.45 * bm1 * Math.sin(bp - 0.5 * bm1)) * USER.body : 0;   // 頭は、体より少し遅れて上下する
   // 体は、頭の動きに少し遅れてついてくる（ばね。少し行きすぎてから落ち着く）
-  const swayT = F.bodyX * 46 + F.yaw * 0.55 + (idle ? Math.sin(time * 0.0007) * 4 : 0), rollT = F.roll * DEG * 0.12 + F.bodyX * 0.02;
+  const swayT = F.bodyX * 46 + F.yaw * 0.55 + (idle ? Math.sin(time * 0.0007) * 4 * USER.body : 0), rollT = F.roll * DEG * 0.12 + F.bodyX * 0.02;
   const twT = Math.sin((F.yaw / 30) * tune.yawMax * DEG) * 0.1 * bm;
   if (body.sx === null || bm <= 0) { body.sx = swayT; body.rx = rollT; body.tw = twT; body.sv = body.rv = body.tv = 0; }
   else if (dt > 1e-5) {
@@ -2115,6 +2124,9 @@ function render(time, dt) {
 
 // ---- 入力: マウス / デモ / Webカメラ / マイク / 自動まばたき ----------------
 const mouse = { x: 0, y: 0 };
+let previewT0 = -1;   // 「ためしに動かす」を始めた時刻（秒。-1 = していない）
+// ためしに動かす: 手で止めているときは、前の動かし方へ戻してから。マウスのときだけ動く（カメラ・おまかせでは、もう動いている）
+function previewMotion() { if (mode === 'manual') setMode(lastLive); if (mode === 'mouse') previewT0 = performance.now() / 1000; }
 addEventListener('pointermove', (e) => {
   mouse.x = clamp((e.clientX / innerWidth) * 2 - 1, -1, 1);
   mouse.y = clamp((e.clientY / innerHeight) * 2 - 1, -1, 1);
@@ -2167,7 +2179,7 @@ const GAZE_SPRING = { gazeX: { f: 6.2, d: 0.82, r: 0.2, v: 0, pt: null }, gazeY:
 function gazeStep(g, key, dt) {
   const tg = target[key];
   if (g.pt === null) g.pt = tg;
-  const b = eyeTune.gazeBounce, d = b <= 1 ? lerp(1, g.d, b) : lerp(g.d, 0.5, b - 1), r = g.r * Math.min(b, 1);
+  const b = eyeTune.gazeBounce * USER.puru, d = b <= 1 ? lerp(1, g.d, b) : lerp(g.d, 0.5, b - 1), r = g.r * Math.min(b, 1);
   const n = Math.max(1, Math.ceil(dt / (1 / 120))), h = dt / n, tv = (tg - g.pt) / dt, om = TAU * g.f;
   for (let i = 0; i < n; i++) {
     g.v += (om * om * (tg - cur[key]) + 2 * d * om * (r * tv - g.v)) * h;
@@ -2254,7 +2266,7 @@ const LS = await import('./lipsync.js?v=' + JS_V);
 const lipSet = LS.loadSettings();
 let lip = null;
 //                 開き  幅    すぼめ 歯
-// 母音ごとの口の形。初期値は model.json の mouthShapes（キャラの設定）。調整パネルの「母音の口の形」で変えられ、ブラウザに保存する
+// 母音ごとの口の形。初期値は model.json の mouthShapes（キャラの設定）。操作パネルの「母音の口の大きさ」で変えられ、ブラウザに保存する
 const SHAPE_KEYS = [
   { key: 'open', label: '開き（高さ）', min: 0, max: 1, to: 'mouthOpen' },
   { key: 'width', label: '幅', min: 0.4, max: 1.3, to: 'mouthWidth' },
@@ -2288,6 +2300,10 @@ const KM_SHAPE = {}, KM_SHAPE_KEY = MODEL_NAME + '.keyMouthShapes.v1';
 for (const v of LS.VOWELS) KM_SHAPE[v] = Object.assign({ open: 1, width: 1, y: 0 }, (model.keyMouthShapes || {})[v] || {});
 const KM_SHAPE_INIT = JSON.parse(JSON.stringify(KM_SHAPE));
 try { const sv = JSON.parse(localStorage.getItem(KM_SHAPE_KEY) || '{}'); for (const v of LS.VOWELS) for (const k of KM_SHAPE_KEYS) if (typeof (sv[v] || {})[k.key] === 'number') KM_SHAPE[v][k.key] = clamp(sv[v][k.key], k.min, k.max); } catch (e) { /* 保存が使えない環境では初期値 */ }
+for (const v of LS.VOWELS) {   // URL の set=（OBS 用の URL）
+  const sv = (URLSET.vowels || {})[v] || {}, T = keyMouth ? KM_SHAPE : VOWEL_SHAPE;
+  for (const k of (keyMouth ? KM_SHAPE_KEYS : SHAPE_KEYS)) if (typeof sv[k.key] === 'number' && isFinite(sv[k.key])) T[v][k.key] = clamp(sv[k.key], k.min, k.max);
+}
 if (keyMouth) keyMouth.shapeMod = KM_SHAPE;
 const P_OF = {}; for (const pr of PARAMS) P_OF[pr.key] = pr;
 const P_WIDTH = P_OF.mouthWidth;
@@ -2329,7 +2345,7 @@ function trackMic() {
   const r = lip.read();
   applyVowels(r.w, r.vol, r.voiced);
 }
-// 話しているデモ: 音は出さず、せりふ（ひらがな）の母音どおりに口を動かす。調整パネルのボタン、または ?talkdemo=1
+// 口パクデモ: 音は出さず、せりふ（ひらがな）の母音どおりに口を動かす。操作パネルのボタン、または ?talkdemo=1
 //   1 文字（1 拍）ごとに母音の形にし、拍の間は少しだけ閉じる。ま行・ば行・ぱ行は、いったん唇を閉じる。
 //   「ん」は小さく開いたまま、「っ」と「、」「。」は閉じて間を取る。「ー」は前の母音をのばす
 const TALK_TEXT = model.talkDemo || 'こんにちは、くらげちゃんです。きょうも いちにち、よろしくおねがいします。えへへ、うまく しゃべれてるかな。みてくれて、ありがとー。';
@@ -2365,7 +2381,7 @@ function trackTalkDemo(time) {
   if (m.close) e *= sstep(0.15, 0.5, x);                           // ま行・ば行・ぱ行は、いったん閉じてから開く
   applyVowels(oneHot, m.vol * e, 1);
 }
-// 確認用: マイクなしで「あ・い・う・え・お」を順に言わせる（?lipdemo=1、または調整パネルのボタン）
+// 確認用: マイクなしで「あ・い・う・え・お」を順に言わせる（?lipdemo=1、または操作パネルの「あいうえお と言わせる」）
 let lipDemo = q.has('lipdemo') ? 0 : -1;
 const oneHot = { a: 0, i: 0, u: 0, e: 0, o: 0 };
 function trackLipDemo(time) {
@@ -2537,6 +2553,16 @@ function updateTargets(time) {
     target.bodyX = mouse.x * 0.5;
     target.gazeX = clamp(mouse.x * 0.8 + saccade.x, -1, 1);
     target.gazeY = clamp(mouse.y * 0.8 + saccade.y, -1, 1);
+    if (previewT0 >= 0) {   // ためしの動き: 約 2.4 秒。左右に 1 往復半 → うなずき → もとの向きへ
+      const u = tw - previewT0, D = 2.4;
+      if (u >= D || u < 0) previewT0 = -1;
+      else {
+        const e = sstep(0, 0.12, u) * (1 - sstep(D - 0.45, D, u));
+        target.yaw = lerp(target.yaw, 27 * Math.sin(TAU * u / 1.1) * (1 - sstep(1.3, 1.65, u)), e);
+        target.pitch = lerp(target.pitch, -11 * Math.sin(Math.PI * clamp((u - 1.5) / 0.7, 0, 1)), e);
+        target.roll = lerp(target.roll, 0, e); target.bodyX = lerp(target.bodyX, 0.3 * Math.sin(TAU * u / 1.1) * (1 - sstep(1.3, 1.65, u)), e);
+      }
+    }
   }
   const bl = autoBlink(time), ed = mode === 'demo';
   target.eyeR = Math.min(bl * (ed ? act.eyeR : 1), 1.2); target.eyeL = Math.min(bl * (ed ? act.eyeL : 1), 1.2);
@@ -2555,15 +2581,20 @@ function setExpr(name) {
   exprName = name;
   for (const b of document.querySelectorAll('#exprs button')) b.classList.toggle('on', b.dataset.name === name);
 }
+let lastLive = 'mouse';   // 手で止める前の動かし方（「止めるのをやめる」で戻る先）
 function setMode(m) {
+  if (mode === 'demo' && m !== 'demo') setExpr('通常');   // おまかせ（ひとり芝居）が出していた表情を、残さない
   mode = m;
+  if (m !== 'manual') lastLive = m;
   for (const o of document.querySelectorAll('#dirs button')) o.classList.remove('on');
   idle = !(m === 'manual' && fixed);
   for (const b of document.querySelectorAll('#modes button')) b.classList.toggle('on', b.dataset.mode === m);
+  document.body.classList.toggle('mode-camera', m === 'camera');   // 鏡写しの切り替えは、カメラのときだけ出す
+  document.body.classList.toggle('mode-manual', m === 'manual');   // 「止めるのをやめる」は、手で止めているときだけ出す
   if (m === 'camera') startCamera();
   else {
     $('#cam').style.display = 'none';
-    status({ mouse: 'マウスカーソルの方を向きます', demo: 'ひとり芝居を再生します（声は出ません）', manual: 'スライダーで動かせます' }[m] || '');
+    status({ mouse: 'マウスカーソルの方を向きます', demo: 'ひとり芝居を、くり返し再生します（声は出ません）', manual: '向きや表情を、手で止めています（上の「動かし方」を押すと、戻ります）' }[m] || '');
   }
   if (m === 'camera' && camReady) $('#cam').style.display = 'block';
   if (m !== 'demo' && act.on) actStop();
@@ -2573,24 +2604,27 @@ function buildSliders(root, list, store, onInput) {
   for (const p of list) {
     const l = document.createElement('label');
     l.className = 'sl';
-    const step = (p.max - p.min) / 200;
+    const step = p.step || (p.max - p.min) / 200;
     l.innerHTML = `<span>${p.label}</span><input type="range" min="${p.min}" max="${p.max}" step="${step}" value="${store[p.key]}"><span></span>`;
     const inp = l.children[1], val = l.children[2];
-    const show = () => { val.textContent = (+inp.value).toFixed(p.max > 5 ? 0 : 2); };
+    const show = () => { val.textContent = p.fmt ? p.fmt(+inp.value) : (+inp.value).toFixed(p.max > 5 ? 0 : 2); };
     inp.addEventListener('input', () => { store[p.key] = +inp.value; show(); if (onInput) onInput(); });
     show();
     p.input = inp; p.show = show;
     root.appendChild(l);
   }
 }
-// ---- 調整パネルの「折りたたみの項目」。ふだんは閉じておき、開閉はブラウザに覚えさせる
+const pct = (v) => Math.round(v * 100) + '%';
+// ---- 操作パネルの「折りたたみの項目」（好みに合わせる・キャラを作る人向けと、その中の項目）。ふだんは閉じておき、開閉はブラウザに覚えさせる
 const SEC_KEY = 'keshin2d.ui.sections.v1';
 let secOpen = {};
 try { secOpen = JSON.parse(localStorage.getItem(SEC_KEY) || '{}'); } catch (e) { /* 保存が使えない環境では全部閉じたまま */ }
 // （<details> は使わない。全部を閉じた状態で、ヘッドレス Chrome での撮影が固まった）
 function wireSection(d) {
   const set = (on) => d.classList.toggle('open', on);
-  set(!!secOpen[d.dataset.sec] || (q.get('open') || '').split(',').includes(d.dataset.sec));   // URL の open=vowels,export でも開ける（確認用）
+  const byUrl = (q.get('open') || '').split(',').includes(d.dataset.sec);   // URL の open=prefs,export でも開ける（確認用）
+  set(!!secOpen[d.dataset.sec] || byUrl);
+  if (byUrl) for (let p = d.parentElement.closest('.sec'); p; p = p.parentElement.closest('.sec')) p.classList.add('open');   // 中の項目を開くときは、外側も開く
   d.querySelector('.sechead').addEventListener('click', () => {
     set(!d.classList.contains('open'));
     secOpen[d.dataset.sec] = d.classList.contains('open');
@@ -2611,14 +2645,59 @@ buildSliders($('#sliders'), PARAMS, target, () => { if (mode !== 'manual') setMo
 // 調整値はブラウザに保存する（次に開いたときも同じ値で動く）
 const TUNE_KEY = MODEL_NAME + '.tune.v1';
 try { const saved = JSON.parse(localStorage.getItem(TUNE_KEY) || '{}'); for (const t of TUNE) if (typeof saved[t.key] === 'number') tune[t.key] = clamp(saved[t.key], t.min, t.max); } catch (e) { /* 保存が使えない環境では既定値のまま */ }
+for (const t of TUNE) tune[t.key] = urlNum('tune', t.key, tune[t.key], t.min, t.max);   // URL の set=（OBS 用の URL）
 const saveTune = () => { try { localStorage.setItem(TUNE_KEY, JSON.stringify(tune)); } catch (e) { /* 保存できなくても動作は続ける */ } };
+const PREF_RESETS = [];   // 「好みを全部もとに戻す」が呼ぶ、項目ごとの戻し方
+// ---- 好みに合わせる: 動きの好み（揺れ・体・瞳）。キャラの初期の動きに対する割合で決める。値はモデルごとにブラウザへ保存する
+const USER_KEY = MODEL_NAME + '.user.v1';
+try {
+  const saved = JSON.parse(localStorage.getItem(USER_KEY) || '{}');
+  for (const u of USER_ITEMS) if (typeof saved[u.key] === 'number') USER[u.key] = clamp(saved[u.key], u.min, u.max);
+  for (const p of PHYS) if (typeof (saved.phys || {})[p.id] === 'number') p.ug = clamp(saved.phys[p.id], 0, 2);
+} catch (e) { /* 保存が使えない環境では 100% のまま */ }
+for (const u of USER_ITEMS) USER[u.key] = urlNum('user', u.key, USER[u.key], u.min, u.max);
+for (const p of PHYS) p.ug = urlNum('uphys', p.id, p.ug, 0, 2);
+const saveUser = () => { try { const o = Object.assign({ phys: {} }, USER); for (const p of PHYS) o.phys[p.id] = p.ug; localStorage.setItem(USER_KEY, JSON.stringify(o)); } catch (e) { /* 保存できなくても動作は続ける */ } };
+{
+  const root = $('#p_feel');
+  root.insertAdjacentHTML('beforeend', '<h3>動きの好み</h3>');
+  const PRESETS = [['おちついた', { sway: 0.5, body: 0.6, puru: 0.6 }], ['ふつう', { sway: 1, body: 1, puru: 1 }], ['元気', { sway: 1.5, body: 1.4, puru: 1.4 }]];
+  const row = document.createElement('div'); row.className = 'row'; row.id = 'presets'; row.style.marginBottom = '6px'; root.appendChild(row);
+  const mark = () => { for (const b of row.querySelectorAll('button[data-i]')) b.classList.toggle('on', USER_ITEMS.every((u) => Math.abs(USER[u.key] - PRESETS[+b.dataset.i][1][u.key]) < 0.005)); };
+  const setAll = (o) => { for (const u of USER_ITEMS) { USER[u.key] = o[u.key]; u.input.value = o[u.key]; u.show(); } saveUser(); mark(); };
+  // 揺れ方の違いは、キャラが動いたときにしか見えない。まとめボタンを押したとき・つまみを離したときに、ためしの動き（左右に振って、うなずく）を入れる
+  PRESETS.forEach(([name], i) => { const b = document.createElement('button'); b.textContent = name; b.dataset.i = i; b.addEventListener('click', () => { setAll(PRESETS[i][1]); previewMotion(); }); row.appendChild(b); });
+  const pv = document.createElement('button'); pv.id = 'feelpreview'; pv.className = 'ghost'; pv.textContent = '▶ ためしに動かす';
+  pv.title = '顔を左右に振って、うなずきます（揺れ方の違いを見るため。動かし方が「マウス」のとき）';
+  pv.addEventListener('click', previewMotion); row.appendChild(pv);
+  for (const u of USER_ITEMS) u.fmt = pct;
+  buildSliders(root, USER_ITEMS, USER, () => { saveUser(); mark(); });
+  for (const u of USER_ITEMS) u.input.addEventListener('change', previewMotion);   // つまみを離したとき
+  const note = document.createElement('div'); note.className = 'hint'; note.textContent = '100% が、このキャラの初期の動きです。値を変えると、ためしに顔を振って見せます（揺れ方の違いは、動いたときに見えます）。';
+  root.appendChild(note);
+  mark();
+  PREF_RESETS.push(() => setAll(PRESETS[1][1]));
+  // このキャラの飾り（model.json の physics。キャラごとに、数も名前も違う）を、1 つずつ決められる。無いキャラには、この欄そのものを出さない
+  if (PHYS.length) {
+    const tg = document.createElement('button'); tg.id = 'physuser'; tg.className = 'ghost'; tg.style.marginTop = '4px';
+    const box = document.createElement('div'); box.id = 'physuserbox'; box.style.display = 'none';
+    const lists = PHYS.map((p) => ({ p, it: { key: 'ug', label: p.label || p.id, min: 0, max: 2, def: 1, step: 0.05, fmt: pct } }));
+    for (const { p, it } of lists) { buildSliders(box, [it], p, saveUser); it.input.addEventListener('change', previewMotion); }
+    let open = false;
+    const show = () => { box.style.display = open ? '' : 'none'; tg.textContent = (open ? '▾ ' : '▸ ') + '飾りごとに決める（' + PHYS.length + ' 個）'; };
+    tg.addEventListener('click', () => { open = !open; show(); });
+    root.appendChild(tg); root.appendChild(box); show();
+    PREF_RESETS.push(() => { for (const { p, it } of lists) { p.ug = 1; it.input.value = 1; it.show(); } saveUser(); });
+  }
+}
 // 9 方向ボタン。押すと、顔をその向きの「上限いっぱい」で止める（マウス追従などは止まる）。
 // 止めたまま下の上限スライダーを動かすと、その場で顔が変わるので、崩れない所まで下げて決められる
 {
-  const root = $('#tune');
+  const root = $('#p_limits');
+  root.insertAdjacentHTML('beforeend', '<h3>向きの上限</h3>');
   const note = document.createElement('div');
-  note.textContent = '向きのボタンを押すと、その向きの上限いっぱいで顔が止まります。止めたまま下の「上限」を動かして調節してください。';
-  note.style.cssText = 'color:#9aa0b0;margin-bottom:6px';
+  note.textContent = '向きのボタンを押すと、その向きの上限いっぱいで顔が止まります。止めたまま、下の上限を動かして、崩れない所・好みの所に決めてください。';
+  note.className = 'hint'; note.style.cssText = 'margin:0 0 6px';
   root.appendChild(note);
   const grid = document.createElement('div');
   grid.id = 'dirs';
@@ -2638,17 +2717,25 @@ const saveTune = () => { try { localStorage.setItem(TUNE_KEY, JSON.stringify(tun
     grid.appendChild(b);
   }
   root.appendChild(grid);
+  const LIMITS = TUNE.slice(0, 4);   // 左右・上・下・かしげの上限
+  buildSliders(root, LIMITS, tune, saveTune);
+  const back = document.createElement('button');
+  back.id = 'dirback'; back.textContent = '止めるのをやめる'; back.style.marginTop = '6px';
+  back.title = '向きを止める前の動かし方（マウスなど）へ戻します';
+  back.addEventListener('click', () => setMode(lastLive));
+  root.appendChild(back);
+  PREF_RESETS.push(() => { for (const t of LIMITS) { tune[t.key] = t.def; t.input.value = t.def; t.show(); } saveTune(); });
 }
-buildSliders($('#tune'), TUNE, tune, saveTune);
+buildSliders($('#tune'), TUNE.slice(4), tune, saveTune);   // 残りは「キャラを作る人向け」
 {
   const b = document.createElement('button');
-  b.textContent = '調整を初期値に戻す';
+  b.textContent = '顔の動き・髪の揺れを初期値に戻す（向きの上限も）';
   b.style.marginTop = '6px';
   b.addEventListener('click', () => { for (const t of TUNE) { tune[t.key] = t.def; t.input.value = t.def; t.show(); } saveTune(); });
   $('#tune').appendChild(b);
 }
 // ---- 口の色と線の太さ（ベクターの口を使うモデルだけ）。値はモデルごとにブラウザへ保存する
-if (model.mouthVector) {
+if (model.mouthVector && !keyMouth) {   // キーの形の口（描いた絵の口）のモデルでは、効かないので出さない
   const mv = model.mouthVector;
   const mdef = JSON.parse(JSON.stringify(mv));
   // 保存の名前に、モデルの初期値の要約を入れる。モデルの初期値が変わったら、前に保存した色は使わない
@@ -2702,6 +2789,7 @@ if (PHYS.length) {
     const saved = JSON.parse(localStorage.getItem(PHYS_KEY) || '{}');
     for (const s of PHYS) for (const sl of PHYS_SLIDERS) { const v = (saved[s.id] || {})[sl.key]; if (typeof v === 'number') s[sl.key] = clamp(v, sl.min, sl.max); }
   } catch (e) { /* 保存が使えない環境では初期値のまま */ }
+  for (const s of PHYS) for (const sl of PHYS_SLIDERS) { const v = ((URLSET.phys || {})[s.id] || {})[sl.key]; if (typeof v === 'number' && isFinite(v)) s[sl.key] = clamp(v, sl.min, sl.max); }   // URL の set=
   const physOut = () => { const o = {}; for (const s of PHYS) { o[s.id] = {}; for (const sl of PHYS_SLIDERS) o[s.id][sl.key] = Math.round(s[sl.key] * 100) / 100; } return o; };
   const savePhys = () => { try { localStorage.setItem(PHYS_KEY, JSON.stringify(physOut())); } catch (e) { /* 同上 */ } };
   model.physicsOut = physOut;
@@ -2725,6 +2813,7 @@ if (PHYS.length) {
   const EKEY = MODEL_NAME + '.eye.v1.' + hsh.toString(36);
   try { const saved = JSON.parse(localStorage.getItem(EKEY) || '{}'); for (const t of EYE_TUNE) if (typeof saved[t.key] === 'number') eyeTune[t.key] = clamp(saved[t.key], t.min, t.max); } catch (e) { /* 保存が使えない環境では初期値のまま */ }
   for (const t of EYE_TUNE) if (q.has(t.key)) eyeTune[t.key] = +q.get(t.key);
+  for (const t of EYE_TUNE) eyeTune[t.key] = urlNum('eye', t.key, eyeTune[t.key], t.min, t.max);   // URL の set=
   const saveEye = () => { try { localStorage.setItem(EKEY, JSON.stringify(eyeTune)); } catch (e) { /* 同上 */ } };
   const root = uiSection('eye', '瞳の動き（ぷるん・うるみ）');
   const note = document.createElement('div');
@@ -2740,85 +2829,125 @@ if (PHYS.length) {
   b.addEventListener('click', () => { for (const t of EYE_TUNE) { eyeTune[t.key] = t.def; t.input.value = t.def; t.show(); } saveEye(); });
   root.appendChild(b);
 }
-// ---- 母音の口の形。母音を選ぶと、その形のまま口が止まり、スライダーで形を決められる
+// ---- 母音の口の大きさ（好みに合わせる）。母音を選ぶと、その形のまま口が止まり、スライダーで形を決められる
+let vowelsOut = null;   // 「OBS 用の URL」に入れる、母音の形（初期値と違う物だけ）
 if (model.mouthVector && model.mouthVector.style === 2) {
-  const root = uiSection('vowels', '母音の口の形（あ い う え お）');
-  const note = document.createElement('div');
-  note.textContent = '母音を押すと、その口の形で止まります。下のスライダーで形を決めてください（声を出したときの、いちばん大きく開いた形です）。もう一度押すと止めるのをやめます。'
-    + (keyMouth ? 'このキャラの口は描いた絵なので、開き・幅・上下の位置だけを、絵の形に掛けて変えます。' : '');
-  note.style.cssText = 'color:#9aa0b0;margin-bottom:6px';
+  const root = $('#vowels');
+  root.insertAdjacentHTML('beforeend', '<h3>母音の口の大きさ</h3>');
+  const note = document.createElement('div'); note.className = 'hint'; note.style.cssText = 'margin:0 0 6px';
+  note.textContent = '母音を押すと、その口の形で止まります。下のスライダーで、声を出したときの、いちばん大きく開いた形を決めてください。もう一度押すと、止めるのをやめます。';
   root.appendChild(note);
   const JA = { a: 'あ', i: 'い', u: 'う', e: 'え', o: 'お' };
-  const row = document.createElement('div'); row.className = 'row'; root.appendChild(row);
+  const row = document.createElement('div'); row.className = 'row'; row.id = 'vowelrow'; root.appendChild(row);
   const box = document.createElement('div'); box.style.marginTop = '6px'; root.appendChild(box);
   // キーの形の口では、絵に掛ける足し（KM_SHAPE）のスライダーにする。ベクターの口では、今までどおり VOWEL_SHAPE
   const S_KEYS = keyMouth ? KM_SHAPE_KEYS : SHAPE_KEYS, S_VAL = keyMouth ? KM_SHAPE : VOWEL_SHAPE, S_INIT = keyMouth ? KM_SHAPE_INIT : SHAPE_INIT, S_STORE = keyMouth ? KM_SHAPE_KEY : SHAPE_KEY;
+  // ここに出すのは、開き・幅・上下の位置の 3 つ。式で描く口（前の作り方）の残りの項目は、「キャラを作る人向け」に出す
+  const P_KEYS = S_KEYS.slice(0, 3), A_KEYS = S_KEYS.slice(3);
+  const abox = A_KEYS.length ? uiSection('vowels', '母音の口の形（くわしく）') : null;
+  if (abox) { const n2 = document.createElement('div'); n2.className = 'hint'; n2.style.marginTop = '0'; n2.textContent = '「好みに合わせる」の「母音の口の大きさ」で母音を選ぶと、その母音の、残りの項目がここに出ます。'; abox.appendChild(n2); }
   const saveShapes = () => { try { localStorage.setItem(S_STORE, JSON.stringify(S_VAL)); } catch (e) { /* 保存できなくても動作は続ける */ } };
   const shapesOut = () => { const o = {}; for (const v of LS.VOWELS) { o[v] = {}; for (const k of S_KEYS) o[v][k.key] = Math.round(S_VAL[v][k.key] * 100) / 100; } return o; };
   if (keyMouth) model.keyMouthShapesOut = shapesOut; else model.mouthShapesOut = shapesOut;
+  vowelsOut = () => { const o = {}; for (const v of LS.VOWELS) for (const k of S_KEYS) if (Math.abs(S_VAL[v][k.key] - S_INIT[v][k.key]) > 1e-6) (o[v] = o[v] || {})[k.key] = Math.round(S_VAL[v][k.key] * 1000) / 1000; return o; };
   const groups = {}, btns = {};
   const pick = (v) => {
     shapeEdit = shapeEdit === v ? '' : v;
     if (!shapeEdit && !micOn) restMouth();
-    for (const k of LS.VOWELS) { btns[k].classList.toggle('on', k === shapeEdit); groups[k].el.style.display = k === shapeEdit ? '' : 'none'; }
+    for (const k of LS.VOWELS) { const on = k === shapeEdit; btns[k].classList.toggle('on', on); groups[k].el.style.display = on ? '' : 'none'; if (groups[k].ael) groups[k].ael.style.display = on ? '' : 'none'; }
   };
   for (const v of LS.VOWELS) {
     const b = document.createElement('button'); b.textContent = JA[v]; b.addEventListener('click', () => pick(v)); row.appendChild(b); btns[v] = b;
     const el = document.createElement('div'); el.style.display = 'none'; box.appendChild(el);
-    const list = S_KEYS.map((k) => Object.assign({}, k));
+    const list = P_KEYS.map((k) => Object.assign({}, k, keyMouth && k.key !== 'y' ? { fmt: pct } : {}));
     buildSliders(el, list, S_VAL[v], saveShapes);
+    let ael = null, alist = [];
+    if (abox) { ael = document.createElement('div'); ael.style.display = 'none'; abox.appendChild(ael); alist = A_KEYS.map((k) => Object.assign({}, k)); buildSliders(ael, alist, S_VAL[v], saveShapes); }
+    const resetOne = () => { for (const k of list.concat(alist)) { S_VAL[v][k.key] = S_INIT[v][k.key]; k.input.value = S_VAL[v][k.key]; k.show(); } };
     const r = document.createElement('button'); r.textContent = '「' + JA[v] + '」を初期値に戻す'; r.style.marginTop = '4px';
-    r.addEventListener('click', () => { for (const k of list) { S_VAL[v][k.key] = S_INIT[v][k.key]; k.input.value = S_VAL[v][k.key]; k.show(); } saveShapes(); });
+    r.addEventListener('click', () => { resetOne(); saveShapes(); });
     el.appendChild(r);
-    groups[v] = { el, list };
+    groups[v] = { el, ael, resetOne };
   }
+  PREF_RESETS.push(() => { for (const v of LS.VOWELS) groups[v].resetOne(); saveShapes(); });
   if (shapeEdit) { const v = shapeEdit; shapeEdit = ''; if (btns[v]) pick(v); }
-}
-// ---- 口パク（マイク）の調整。値はブラウザに保存する（キャラではなく、話す人とマイクに付く値）
+} else $('#vowels').style.display = 'none';
+// ---- マイクの口パク（好みに合わせる）。値はブラウザに保存する（キャラではなく、話す人とマイクに付く値）
 {
-  const root = uiSection('lipsync', 'マイクの口パクの調整');
-  const note = document.createElement('div');
-  note.textContent = '上の「マイクで口パク」を入れると、声の母音（あいうえお）で口の形が変わります。合わないときは、下のボタンを押してから、その母音を 1 秒のばして言うと、あなたの声で覚え直します。';
-  note.style.cssText = 'color:#9aa0b0;margin-bottom:6px';
+  const root = $('#p_lip');
+  root.insertAdjacentHTML('beforeend', '<h3>マイクの口パク</h3>');
+  const LIP_ITEMS = [
+    { key: 'gain', label: '口パクの大きさ', min: 0.3, max: 3, def: 1, fmt: pct },
+    { key: 'gate', label: '小さい音を無視', min: 0.002, max: 0.06, def: 0.012, fmt: (v) => v.toFixed(3) },
+    { key: 'scale', label: '声の高さ', min: 0.85, max: 1.5, def: 1.15 },
+  ];
+  buildSliders(root, LIP_ITEMS, lipSet, () => LS.saveSettings(lipSet));
+  PREF_RESETS.push(() => { for (const k of LIP_ITEMS) { lipSet[k.key] = k.def; k.input.value = k.def; k.show(); } LS.saveSettings(lipSet); });
+  const note = document.createElement('div'); note.className = 'hint';
+  note.textContent = '口の形が声と合わないときは、「声を覚えさせる」を押して、案内のとおりに「あー」「いー」…と 1 つずつ、のばして言ってください。';
   root.appendChild(note);
-  buildSliders(root, [
-    { key: 'gate', label: '小さい音を無視', min: 0.002, max: 0.06 },
-    { key: 'gain', label: '口の開きやすさ', min: 0.3, max: 3 },
-    { key: 'scale', label: '声の高さ', min: 0.85, max: 1.5 },
-  ], lipSet, () => LS.saveSettings(lipSet));
-  const row = document.createElement('div'); row.className = 'row'; row.style.marginTop = '6px';
-  const info = document.createElement('div'); info.style.cssText = 'color:#9aa0b0;margin-top:4px;min-height:1.5em';
   const JA = { a: 'あ', i: 'い', u: 'う', e: 'え', o: 'お' };
+  const row = document.createElement('div'); row.className = 'row'; row.style.marginTop = '6px';
+  const info = document.createElement('div'); info.id = 'lipinfo'; info.className = 'hint'; info.style.minHeight = '1.5em';
   const showCal = () => { const c = lipSet.centers || {}; info.textContent = '覚えた声: ' + (LS.VOWELS.filter((v) => c[v]).map((v) => JA[v]).join(' ') || 'なし（一般的な値 ×「声の高さ」を使っています）'); };
+  // 声を覚えさせる: あ → お を、1 つずつ案内する（押してから言い始めるまでの間を取る）
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  let busy = false;
+  const learn = async (list, btn) => {
+    if (busy) return;
+    busy = true; btn.classList.add('on');
+    try {
+      if (!lip) { $('#mic').checked = true; await startMic(); }
+      if (!lip) { info.textContent = 'マイクを使えませんでした。ブラウザの、マイクの許可を確かめてください。'; return; }
+      for (let i = 0; i < list.length; i++) {
+        const v = list[i], cnt = list.length > 1 ? '（' + (i + 1) + ' / ' + list.length + '）' : '';
+        let r = null;
+        for (let k = 0; k < 2 && !r && lip; k++) {
+          info.textContent = (k ? '聞き取れませんでした。もう一度、' : '') + '「' + JA[v] + 'ー」と、のばして言ってください…' + cnt;
+          await wait(700);
+          if (lip) r = await lip.calibrate(v, 1300);
+        }
+        if (!r) { info.textContent = '「' + JA[v] + '」が聞き取れませんでした。静かな所で、もう一度押してください。'; return; }
+      }
+      showCal();
+    } finally { busy = false; btn.classList.remove('on'); }
+  };
+  const wiz = document.createElement('button'); wiz.id = 'lipwiz'; wiz.textContent = '声を覚えさせる';
+  wiz.title = '「あ」から「お」まで、順に 1 秒ずつ、あなたの声を覚えます';
+  wiz.addEventListener('click', () => learn(LS.VOWELS, wiz));
+  row.appendChild(wiz);
+  const row2 = document.createElement('div'); row2.className = 'row hint'; row2.style.gap = '2px';
+  row2.appendChild(document.createTextNode('1 つだけ覚え直す:'));
   for (const v of LS.VOWELS) {
-    const b = document.createElement('button'); b.textContent = JA[v];
-    b.title = '押してから「' + JA[v] + 'ー」と 1 秒のばして言う';
-    b.addEventListener('click', async () => {
-      if (!lip) { info.textContent = '先に「マイクで口パク」を入れてください。'; return; }
-      info.textContent = '「' + JA[v] + 'ー」と言ってください…'; b.classList.add('on');
-      const r = await lip.calibrate(v, 1200);
-      b.classList.remove('on');
-      if (r) showCal(); else info.textContent = '声が聞き取れませんでした。もう一度押して、のばして言ってください。';
-    });
-    row.appendChild(b);
+    const b = document.createElement('button'); b.textContent = JA[v]; b.className = 'ghost mini';
+    b.title = '「' + JA[v] + '」だけ、覚え直す';
+    b.addEventListener('click', () => learn([v], b));
+    row2.appendChild(b);
   }
-  const clr = document.createElement('button'); clr.textContent = '忘れる';
+  const clr = document.createElement('button'); clr.textContent = '忘れる'; clr.className = 'ghost';
   clr.addEventListener('click', () => { lipSet.centers = null; LS.saveSettings(lipSet); showCal(); });
   row.appendChild(clr);
-  root.appendChild(row); root.appendChild(info); showCal();
-  const now = document.createElement('div'); now.style.cssText = 'margin-top:4px;font-variant-numeric:tabular-nums';
-  root.appendChild(now);
-  setInterval(() => { if (micOn) now.textContent = 'いまの音: ' + (JA[lipNow.top] || '―') + '　大きさ ' + lipNow.vol.toFixed(2); else if (now.textContent) now.textContent = ''; }, 100);
-  const demos = $('#demos') || root;
-  const talk = document.createElement('button'); talk.textContent = '話しているデモ';
+  root.appendChild(row); root.appendChild(row2); root.appendChild(info); showCal();
+  // 口のデモ（音は出さない）: 「口パクデモ」は、ふだんの画面に置く。「あいうえお」は、母音の口の大きさの所に置く
+  const demos = $('#demos');
+  const talk = document.createElement('button'); talk.id = 'talkdemo'; talk.textContent = '口パクデモ';
   talk.title = 'せりふの母音どおりに口を動かします（音は出ません）。もう一度押すと止まります';
   const showTalk = () => talk.classList.toggle('on', talkDemo >= 0);
   talk.addEventListener('click', () => { if (talkDemo >= 0) { talkDemo = -1; if (!micOn) restMouth(); } else talkDemo = performance.now() / 1000; showTalk(); });
   demos.appendChild(talk); showTalk();
-  const demo = document.createElement('button'); demo.textContent = 'あいうえお';
-  demo.title = '「あ・い・う・え・お」を順に 2 回言わせます';
+  const demo = document.createElement('button'); demo.id = 'aiueo'; demo.textContent = 'あいうえお と言わせる';
+  demo.title = '「あ・い・う・え・お」を順に 2 回言わせます（音は出ません）';
   demo.addEventListener('click', () => { talkDemo = -1; showTalk(); lipDemo = performance.now() / 1000; });
-  demos.appendChild(demo);
+  const vr = $('#vowelrow');
+  if (vr) { demo.className = 'ghost'; vr.appendChild(demo); } else demos.appendChild(demo);
+}
+// ---- 「好みを全部もとに戻す」（動きの好み・向きの上限・マイクの口パクの 3 本・母音の口の大きさ。覚えた声は、消さない）
+{
+  const b = document.createElement('button'); b.id = 'prefreset'; b.className = 'wide'; b.textContent = '好みを全部もとに戻す';
+  b.title = '動きの好み・向きの上限・マイクの口パク・母音の口の大きさを、このキャラの初期値に戻します（覚えた声は、消しません）';
+  b.style.marginTop = '14px';
+  b.addEventListener('click', () => { for (const f of PREF_RESETS) f(); });
+  $('#p_reset').appendChild(b);
 }
 // ---- 調整した値を、キャラの設定ファイル（partsgen/chars/<キャラ名>/char.json）へ入れる形で書き出す
 {
@@ -2845,30 +2974,118 @@ if (model.mouthVector && model.mouthVector.style === 2) {
     o.eyeTune = {}; for (const t of EYE_TUNE) o.eyeTune[t.key] = r2(eyeTune[t.key]);
     if (!ta) makeTa();
     ta.value = JSON.stringify(o, null, 1); ta.select();
-    const done = (ok) => { msg.textContent = (ok ? 'コピーしました。' : '下の文字を選んでコピーしてください。') + 'char.json の同じ名前の項目（tune・params・mouthVector・hat・physics_tune・mouthShapes・keyMouthShapes・eyeTune）と置き換えて、モデルを書き出し直すと初期値になります。口の形・口の幅は、手動モードのスライダーの今の値です。'; };
+    const done = (ok) => { msg.textContent = (ok ? 'コピーしました。' : '下の文字を選んでコピーしてください。') + 'char.json の同じ名前の項目（tune・params・mouthVector・hat・physics_tune・mouthShapes・keyMouthShapes・eyeTune）と置き換えて、モデルを書き出し直すと初期値になります。口の形・口の幅は、「手で動かす」のスライダーの今の値です。「動きの好み」の % は、使う人の好みなので、入りません。'; };
     done(false);   // 先に案内を出す（コピーの結果が返ってこない環境がある）
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(ta.value).then(() => done(true), () => done(false));
   });
   root.appendChild(b); root.appendChild(msg);
 }
-for (const name of Object.keys(EXPR)) {
-  const b = document.createElement('button');
-  b.textContent = name; b.dataset.name = name;
-  b.addEventListener('click', () => setExpr(name));
-  $('#exprs').appendChild(b);
+// ---- 表情のボタン。よく使う物を上に並べ、残りは「ほかの表情」に入れる。上の物は、数字キー（1〜9・0）でも切り替えられる
+{
+  // そのモデルに、要る絵がある表情だけを出す（キャラによって、瞳の差分（ハート・キラキラ・ぐるぐる）などが無いことがある。
+  // 差分を使う表情は、その差分が 1 つも無ければ出さない。瞳を描き替える表情は、その瞳の絵が無ければ出さない）
+  const haveDiff = new Set(parts.filter((p) => p.diff).map((p) => p.diff));
+  const usable = (n) => { const d = EXPR[n].diffs || []; return !d.length || (d.some((x) => haveDiff.has(x)) && d.every((x) => !/ハート|しいたけ|ぐるぐる/.test(x) || haveDiff.has(x))); };
+  const names = Object.keys(EXPR).filter(usable);
+  const want = ['通常', 'にこ', '笑顔', '照れ', '怒り', 'びっくり', '困り', 'ウインク'].filter((n) => names.includes(n));
+  const favs = want.length >= 5 ? want : names.slice(0, 8);   // その表情が無いモデル（前の作り方）では、先頭から 8 個
+  const xr = $('#exprs'), fr = xr.querySelector('.favs'), mr = xr.querySelector('.more');
+  const add = (name, root, key) => {
+    const b = document.createElement('button');
+    b.dataset.name = name; b.textContent = name;
+    if (key !== undefined) { const k = document.createElement('kbd'); k.textContent = key; b.appendChild(k); b.title = '数字キー ' + key + ' でも切り替え'; }
+    b.addEventListener('click', () => setExpr(name));
+    root.appendChild(b);
+  };
+  favs.forEach((n, i) => add(n, fr, i < 10 ? String((i + 1) % 10) : undefined));
+  const rest = names.filter((n) => !favs.includes(n));
+  for (const n of rest) add(n, mr);
+  const tg = $('#exprtoggle'), OPEN_KEY = 'keshin2d.ui.exprs.v1';
+  let open = false;
+  try { open = localStorage.getItem(OPEN_KEY) === '1'; } catch (e) { /* 保存が使えない環境では閉じたまま */ }
+  const show = () => { xr.classList.toggle('open', open); tg.textContent = open ? '▾ ほかの表情を閉じる' : '▸ ほかの表情（' + rest.length + '）'; };
+  tg.addEventListener('click', () => { open = !open; try { localStorage.setItem(OPEN_KEY, open ? '1' : '0'); } catch (e) { /* 同上 */ } show(); });
+  if (!rest.length) tg.parentElement.style.display = 'none';
+  show();
 }
-for (const b of document.querySelectorAll('#modes button')) b.addEventListener('click', () => setMode(b.dataset.mode));
+{ const nm = $('#modelname'); if (nm) nm.textContent = MODEL_NAME; }
+// 「マウス」を押したら、表情も通常に戻す（いつでも、最初の状態へ戻れるように）
+for (const b of document.querySelectorAll('#modes button')) b.addEventListener('click', () => { if (b.dataset.mode === 'mouse') setExpr('通常'); setMode(b.dataset.mode); });
 $('#mic').addEventListener('change', (e) => { if (e.target.checked) startMic(); else stopMic(); });
+{ // マイクの音の大きさと、いま聞こえている母音（ふだんの画面）
+  const bar = $('#micmeter i'), vw = $('#micvowel'), JA = { a: 'あ', i: 'い', u: 'う', e: 'え', o: 'お' };
+  let last = '';
+  setInterval(() => {
+    const w = micOn ? Math.round(100 * clamp(Math.sqrt(lipNow.vol) * 1.8, 0, 1)) + '%' : '0';
+    if (w !== last) { bar.style.width = w; last = w; }
+    const t = micOn ? (JA[lipNow.top] || '') : '';
+    if (vw.textContent !== t) vw.textContent = t;
+  }, 80);
+}
 $('#mirror').addEventListener('change', (e) => { mirror = e.target.checked; });
-const setBg = (v) => { document.body.className = document.body.className.replace(/bg-\w+/, 'bg-' + v); $('#bg').value = v; };
-$('#bg').addEventListener('change', (e) => setBg(e.target.value));
+const BGS = ['room', 'dark', 'white', 'green', 'transparent'];
+const setBg = (v) => {
+  if (!BGS.includes(v)) return;
+  document.body.className = document.body.className.replace(/bg-\w+/, 'bg-' + v);
+  for (const b of document.querySelectorAll('#bgs button')) b.classList.toggle('on', b.dataset.bg === v);
+};
+for (const b of document.querySelectorAll('#bgs button')) b.addEventListener('click', () => setBg(b.dataset.bg));
+setBg('room');
+// パネルを隠す・出す。隠したあとは、マウスを動かすと、隅に「出す」ボタンが出る（URL の ui=0 で開いたときは、出さない = 配信の画面に写らない）
 const toggleUi = () => document.body.classList.toggle('noui');
 $('#hide').addEventListener('click', toggleUi);
-addEventListener('keydown', (e) => { if (e.key === 'h' || e.key === 'H') toggleUi(); });
+$('#showui').addEventListener('click', toggleUi);
+{
+  let t = 0;
+  addEventListener('mousemove', () => {
+    if (!document.body.classList.contains('noui')) return;
+    document.body.classList.add('peek'); clearTimeout(t);
+    t = setTimeout(() => document.body.classList.remove('peek'), 2500);
+  });
+}
+addEventListener('keydown', (e) => {
+  if (e.ctrlKey || e.altKey || e.metaKey) return;
+  const el = e.target || {}, tag = el.tagName || '';
+  if (tag === 'TEXTAREA' || tag === 'SELECT' || (tag === 'INPUT' && el.type !== 'range' && el.type !== 'checkbox')) return;   // 文字を打つ欄では、効かせない
+  if (e.key === 'h' || e.key === 'H') { toggleUi(); return; }
+  if (/^[0-9]$/.test(e.key)) { const b = document.querySelectorAll('#exprs .favs button')[(+e.key + 9) % 10]; if (b) setExpr(b.dataset.name); }   // 1〜9・0 = 上に並んだ表情
+});
+// ---- OBS 用の URL: 今の配置・動かし方と、調整した値（キャラの初期値と違う物だけ）を入れた URL を作る。
+// 調整した値はブラウザに覚えるだけなので、OBS のブラウザソース（別の保存場所）には、そのままでは引き継がれない
+$('#obsurl').addEventListener('click', () => {
+  const r3 = (v) => Math.round(v * 1000) / 1000;
+  const set = {};
+  const put = (g, k, v) => { (set[g] = set[g] || {})[k] = r3(v); };
+  for (const u of USER_ITEMS) if (Math.abs(USER[u.key] - u.def) > 1e-6) put('user', u.key, USER[u.key]);
+  for (const t of TUNE) if (Math.abs(tune[t.key] - t.def) > 1e-6) put('tune', t.key, tune[t.key]);
+  for (const t of EYE_TUNE) if (Math.abs(eyeTune[t.key] - t.def) > 1e-6) put('eye', t.key, eyeTune[t.key]);
+  for (const s of PHYS) for (const sl of PHYS_SLIDERS) if (Math.abs(s[sl.key] - s.def[sl.key]) > 1e-6) { set.phys = set.phys || {}; (set.phys[s.id] = set.phys[s.id] || {})[sl.key] = r3(s[sl.key]); }
+  for (const ph of PHYS) if (Math.abs(ph.ug - 1) > 1e-6) put('uphys', ph.id, ph.ug);
+  if (vowelsOut) { const vo = vowelsOut(); if (Object.keys(vo).length) set.vowels = vo; }
+  const p = new URLSearchParams();
+  p.set('model', MODEL_NAME); p.set('ui', '0'); p.set('bg', 'transparent');
+  if (!showHair) p.set('hair', '0');
+  if (mode === 'camera' || mode === 'demo') p.set('mode', mode);
+  p.set('cx', Math.round(VIEW.cx)); p.set('cy', Math.round(VIEW.cy)); p.set('zoom', r3(1060 / VIEW.half));
+  if (Object.keys(set).length) p.set('set', JSON.stringify(set));
+  const url = location.origin + location.pathname + '?' + p.toString();
+  const msg = $('#obsmsg');
+  let box = $('#obsbox');
+  if (!box) {   // 文字の欄は、押されたときに初めて作る（最初から置くと、ヘッドレス Chrome での撮影が時々固まった）
+    box = document.createElement('input'); box.id = 'obsbox'; box.type = 'text'; box.readOnly = true; box.spellcheck = false;
+    box.style.cssText = 'width:100%;box-sizing:border-box;margin-top:6px;font:11px/1.4 Consolas,monospace;background:#1b1c22;color:#e8e8ea;border:1px solid #474a58;border-radius:6px;padding:4px 6px';
+    msg.parentElement.insertBefore(box, msg);
+  }
+  box.value = url; box.select();
+  const tail = 'OBS の「ブラウザ」ソースの URL に貼ってください。起動した黒い窓（サーバー）は、開いたままにします。調整を変えたら、もう一度コピーして貼り直します（マイクの声の覚えは、URL には入りません）。';
+  const done = (ok) => { msg.textContent = (ok ? 'コピーしました。' : '上の文字を選んでコピーしてください。') + tail; };
+  done(false);   // 先に案内を出す（コピーの結果が返ってこない環境がある）
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(() => done(true), () => done(false));
+});
 
 // URL で初期状態を指定できる。例: ?bg=transparent&ui=0&mode=camera / ?yaw=20&eyeR=0.3&exp=笑顔
 if (q.get('bg')) setBg(q.get('bg'));
-if (q.get('ui') === '0') document.body.classList.add('noui');
+if (q.get('ui') === '0') document.body.classList.add('noui', 'pure');
 let fixed = false;
 for (const p of PARAMS) {
   if (q.has(p.key)) { target[p.key] = cur[p.key] = clamp(+q.get(p.key), p.min, p.max); fixed = true; }
@@ -2938,6 +3155,7 @@ if (q.has('sim')) {
   requestAnimationFrame(() => { for (let i = 1; i <= n; i++) { skipDraw = i < n; step(i * 1000 / 60, 1 / 60); } hold(); });
 } else requestAnimationFrame(frame);
 window.__ready = true;
+window.__state = () => ({ mode, expr: exprName, yaw: cur.yaw, pitch: cur.pitch, user: Object.assign({}, USER) });   // 確認の道具（uicheck.mjs）が読む
 
 // ---- 計測用（?probe=1）: 今の姿勢で、頭の輪郭・あご先・瞳が画面のどこへ行くかをページのタイトルに書き出す。
 // 顔のパーツの位置関係を、姿勢ごとに数字で比べるためのもの（読むのは partsgen/tools/ref/probe.mjs。奥の目と輪郭は eyeedge.py）

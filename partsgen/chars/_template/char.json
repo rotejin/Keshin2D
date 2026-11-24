@@ -2,7 +2,7 @@
  "_comment": "新しいキャラの出発点。chars/<キャラ名>/ へ写して使う。道具（eye.py・build.py・build2.py）は環境変数 CHARCFG でこのファイルを読む（pipeline.py が渡す）",
  "_todo": [
   "段階 1: src_face_box（元の絵が設定画のとき。src.png の中の、顔アップの頭の範囲）",
-  "段階 0: talkDemo（話しているデモのせりふ。キャラの名前を名乗るせりふに）。pad_top（頭頂より上へ大きく出る物が無ければ、消してよい）",
+  "段階 0: talkDemo（「口パクデモ」のせりふ。キャラの名前を名乗るせりふに）。pad_top（頭頂より上へ大きく出る物が無ければ、消してよい）",
   "段階 2（HD key の前）: hair.back の box（00_base の 3 倍の絵で、頭のまわりの全体 = 後ろ髪の全体が入り、余白が 1 割ほどの範囲。横 3:縦 2）。入っているのは kurage02 の値。grid.py で 00_base_3x.png を見て置く",
   "段階 4: iris_hue・eyeL・eyeR・build・ear_ymax・tone_rg_min ほか色の条件（probe.py で測って、WORKFLOW.md の「キャラごとに置き直す値」の 2 つの表で決める）",
   "段階 5c: extras.jobs の 61〜68 の ref.box（目 = _eyec_ref.json の box と同じ値。口 = 鼻の下〜あご先を横 3:縦 2 で囲む範囲。入っているのは kurage02 の値）。指示文は、共通の物（partsgen/tools/codex の key_eye1・key_eye2・sheet_mouth・key_mouth2）が自動で使われる（写さなくてよい。キャラ特有の事情を書き足すときだけ prompts/prompt_61〜68.txt へ写す）",
