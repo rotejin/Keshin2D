@@ -424,6 +424,56 @@ if os.environ.get("HEAD"):
     dl_ = cv2.GaussianBlur((or_ - nr_) * both_[..., None], (0, 0), sg_) / np.maximum(wb_[..., None], 1e-3)
     L["10_head"] = (np.clip(nr_ + dl_ * CHAR.get("head_tone", 1.0), 0, 255), na_)
     print("head scale %.3f %.3f" % ((ox1 - ox0) / float(v_.shape[1]), (oy1 - oy0) / float(v_.shape[0])))
+# char.json の eye_marks: {"boxes": [[x0, y0, x1, y1], …]}（3 倍の絵の画素。書かなければ、しない = 前と同じ）。
+# 頭の絵に描かれている、目のすぐ下の印（ほほの斜線・点・ほくろ）を、別のレイヤー「目の下の印」に分けて、エンジンに、目と一緒に動かさせる（model.json の eyeAttach）。
+# 頭の絵（肌）は、輪郭と一緒に動く。目は、顔の中で、肌とは別に動く（下を向くと下へ滑り、上を向くと上へ滑る）。印を肌の絵に入れたままだと、
+# 下を向くと、目が印の上へ来て隠れ、上を向くと、印が口の横まで取り残される（chiwa: 目の下の赤い斜線 3 本）。
+# 範囲には、肌と印だけを入れる（まつげ・輪郭線・鼻を入れない）。印は、範囲の肌の色（印を消して埋めた肌）との色の差で取り出し、
+# ふちの半透明も、肌の色を引いて取る（動いた先の肌の色になじむ。印のまわりに、元の場所の肌の色を持って行かない）
+EYE_MARKS = None
+EM_ = CHAR.get("eye_marks") or {}
+if EM_.get("boxes"):
+    hr_, ha_ = L["10_head"]
+    hr_ = hr_.copy()
+    mk_r_, mk_a_ = np.zeros_like(hr_), np.zeros((Hh, Ww), np.float32)
+    thr_, mg_ = float(EM_.get("thr", 14)), 16
+    for bx_ in EM_["boxes"]:
+        x0_, y0_, x1_, y1_ = [int(round(float(t_))) for t_ in bx_]
+        X0_, Y0_, X1_, Y1_ = max(x0_ - mg_, 0), max(y0_ - mg_, 0), min(x1_ + mg_, Ww), min(y1_ + mg_, Hh)      # 埋めるときに使う、まわりの肌
+        reg_, ra_ = hr_[Y0_:Y1_, X0_:X1_].copy(), ha_[Y0_:Y1_, X0_:X1_]
+        inb_ = np.zeros(reg_.shape[:2], bool)
+        inb_[y0_ - Y0_:y1_ - Y0_, x0_ - X0_:x1_ - X0_] = True
+        ok_ = inb_ & (ra_ > 0.9)
+        if int(ok_.sum()) < 50:
+            print("eye_marks: 範囲 %s は、頭の絵の外です（とばします）" % bx_)
+            continue
+        skin0_ = np.median(reg_[ok_], 0)                                        # 範囲の大半は、肌
+        m0_ = ok_ & (np.abs(reg_ - skin0_).max(-1) > thr_)
+        if not m0_.any():
+            print("eye_marks: 範囲 %s に、印が見つかりません（肌との色の差が %g より大きい画素が無い）" % (bx_, thr_))
+            continue
+        edge_ = m0_ & ~cv2.erode(inb_.astype(np.uint8), np.ones((3, 3), np.uint8)).astype(bool)
+        if edge_.any():
+            print("注意: eye_marks の範囲 %s のふちに、肌と違う色がかかっています（%d 画素）。印が切れているか、まつげ・輪郭線が入っています。範囲を直してください" % (bx_, int(edge_.sum())))
+        mm_ = cv2.dilate(m0_.astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))).astype(bool) & (ra_ > 0.5)
+        fill_ = cv2.inpaint(np.clip(reg_, 0, 255).astype(np.uint8), mm_.astype(np.uint8), 7, cv2.INPAINT_TELEA).astype(np.float32)
+        d_ = reg_ - fill_
+        dn_ = np.sqrt((d_ ** 2).sum(-1))
+        core_ = m0_ & (dn_ >= 0.6 * float(dn_[m0_].max()))
+        lc_ = np.median(reg_[core_], 0)                                         # 印の芯の色
+        v_ = lc_[None, None, :] - fill_
+        al_ = np.clip((d_ * v_).sum(-1) / np.maximum((v_ ** 2).sum(-1), 1.0), 0, 1) * mm_
+        col_ = np.where((al_ > 0.2)[..., None], np.clip(fill_ + d_ / np.maximum(al_, 0.2)[..., None], 0, 255), lc_[None, None, :])
+        err_ = float(np.abs(al_[..., None] * col_ + (1 - al_[..., None]) * fill_ - reg_)[mm_].max())
+        n_ = cv2.connectedComponents((al_ > 0.5).astype(np.uint8))[0] - 1
+        hr_[Y0_:Y1_, X0_:X1_] = np.where(mm_[..., None], fill_, reg_)
+        mk_r_[Y0_:Y1_, X0_:X1_] = np.where(mm_[..., None], col_, mk_r_[Y0_:Y1_, X0_:X1_])
+        mk_a_[Y0_:Y1_, X0_:X1_] = np.maximum(mk_a_[Y0_:Y1_, X0_:X1_], al_ * ra_)
+        print("eye_marks: 範囲 %s から、印 %d 個（%d 画素。芯の色 BGR %d,%d,%d）を分けました。重ね直した絵と、もとの頭の差は、最大 %.1f"
+              % (bx_, n_, int((al_ > 0.5).sum()), lc_[0], lc_[1], lc_[2], err_))
+    if mk_a_.max() > 0.5:
+        L["10_head"] = (hr_, ha_)
+        EYE_MARKS = (mk_r_, mk_a_)
 if os.environ.get("BROW"):
     v_ = imread_rgba(os.environ["BROW"])
     if v_ is None or v_.ndim != 3 or v_.shape[2] != 4:
@@ -906,6 +956,9 @@ BS_ = CHAR.get("bang_shadow") or {}
 if BS_.get("color"):
     shadow_rgb[:] = tuple(float(v_) for v_ in BS_["color"][::-1])
 spec.insert([n_ for n_, *_ in spec].index("輪郭ベース") + 1, ("前髪1影", "頭/顔/輪郭/前髪影", (shadow_rgb, shad * 0.9), False, {"opacity": float(BS_.get("opacity", 0.75))}))
+if EYE_MARKS is not None:
+    # 目の下の印（char.json の eye_marks）: 肌のすぐ上・前髪の影の下。目のパーツ（白目・まつげ）より下なので、目に重なる所は、目に隠れる
+    spec.insert([n_ for n_, *_ in spec].index("輪郭ベース") + 1, ("目の下の印", "頭/顔/印", EYE_MARKS, False))
 # ---------- 表情差分（乗算で顔に重ねる。顔の形での切り抜きはエンジンがする）
 def eye_c(nm):
     ys_, xs_ = np.where(L[nm][1] > 0.5)
@@ -1050,6 +1103,29 @@ if os.environ.get("EXTRAS_DIR"):
                 j_ = names_.index(c_)
                 cr_, ca_ = spec[j_][2]
                 spec[j_] = spec[j_][:2] + ((cr_, ca_ * (1 - np.clip(soft(cv2.dilate((a_ > 0.3).astype(np.uint8), ell(9)), 1.5), 0, 1))),) + spec[j_][3:]
+        # "behind": {"box": [x0, y0, x1, y1], "cut": [x0, y0, x1, y1]}（その絵の、不透明な所の箱の中の割合。書かなければ、分けない = 前と同じ）。
+        # 絵のうち、box に入る所を、別のレイヤー「<名前>奥」にして、"after" のレイヤーの「すぐ下」へ入れる。もとのレイヤー（すぐ上）からは、cut に入る所を抜く。
+        # 耳たぶを通る輪（ピアス）: 輪の奥の側の弧を耳の下へ、手前の側の弧を耳の上へ置くと、輪が、耳たぶを通って見える。輪の全部を耳の上に置くと、
+        # 輪が、耳たぶの前に貼り付いて見える（chiwa）。
+        # cut は、box の中で、"after" のレイヤー（耳）に隠れる所だけにする（省略すると box と同じ）。box を cut より広く取ると、その差の所は、
+        # 奥と手前の両方に同じ絵が入る。見えている所で 2 枚をぴったり切り分けると、つなぎ目に、薄い筋が出た（2 枚を別々に拡大・縮小するため）
+        if e_.get("behind"):
+            ysb_, xsb_ = np.where(a_ > 0.5)
+            if len(ysb_):
+                bx0_, by0_, bw_, bh_ = int(xsb_.min()), int(ysb_.min()), int(xsb_.max() - xsb_.min() + 1), int(ysb_.max() - ysb_.min() + 1)
+                bh_spec_ = e_["behind"] if isinstance(e_["behind"], dict) else {"box": e_["behind"]}
+
+                def frac_mask_(f_):
+                    m_ = np.zeros(a_.shape, bool)
+                    m_[max(0, int(round(by0_ + float(f_[1]) * bh_))):int(round(by0_ + float(f_[3]) * bh_)), max(0, int(round(bx0_ + float(f_[0]) * bw_))):int(round(bx0_ + float(f_[2]) * bw_))] = True
+                    return m_
+                mb_ = frac_mask_(bh_spec_["box"])
+                mc_ = frac_mask_(bh_spec_.get("cut", bh_spec_["box"])) & mb_
+                spec.insert(i_, (e_["name"] + "奥", e_.get("path", spec[i_][1]), (r_, a_ * mb_), False))
+                EXTRA_NAMES.add(e_["name"] + "奥")
+                print("extras: %s の下に %s（%d 画素。手前から抜いた所 %d 画素）" % (e_["after"], e_["name"] + "奥", int((a_ * mb_ > 0.5).sum()), int((a_ * mc_ > 0.5).sum())))
+                a_ = a_ * ~mc_
+                i_ += 1
         spec.insert(i_ + 1, (e_["name"], e_.get("path", spec[i_][1]), (r_, a_), False))
         EXTRA_NAMES.add(e_["name"])
         print("extras: %s の上に %s" % (e_["after"], e_["name"]))
@@ -1488,6 +1564,8 @@ if KEY_MOUTH and KEY_MOUTH_IMG:
 for k_ in ("browAmp", "browTint", "lashOver", "lidShadow", "expr", "pinAttach", "mouthKeySharp", "keyMouthShapes", "noseAxis", "hairWrap", "diffAttach", "eyeLineClip"):
     if CHAR.get(k_) is not None:
         MODEL[k_] = CHAR[k_]                        # 眉の動きの大きさ、キャラごとの表情の足し・上書き。pinAttach: 髪飾りの動き（"skin" = 頭の面に沿う）
+if EYE_MARKS is not None and "目の下の印" in LAYER_NAMES_:
+    MODEL["eyeAttach"] = ["目の下の印"]             # エンジンが、このレイヤーを、目と同じ動きにする（顔の輪郭の内側だけに描く）
 json.dump(MODEL,
           open(os.path.join(out, "model.json"), "w", encoding="utf-8"), ensure_ascii=False)
 f = curves["face"]

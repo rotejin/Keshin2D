@@ -1342,9 +1342,22 @@ function makeFrame(spec, ax0, ay0, standDef = false) {
   return f;
 }
 
+// 目と同じ動きにするレイヤー（目のすぐ下の、涙・汗の粒や、ほほの斜線）。目は、顔の中で、肌の面とは別に動く
+// （下を向くと下へ滑る・横を向くと、あご先に合わせて余分に動く）。1 枚に左右の目のぶんが入っているので、顔のまん中で、左右の目の動きを切り替える
+function eyeFollowPart(sel) {
+  const gR = eyes.R.group, gL = eyes.L.group, oa = [0, 0], ob = [0, 0];
+  return { cell: 20, sel1: sel, deform: (x, y, out) => {
+    const w = sstep(HX - 50, HX + 50, x);
+    gR.apply(x, y, oa); gL.apply(x, y, ob);
+    out[0] = lerp(oa[0], ob[0], w); out[1] = lerp(oa[1], ob[1], w);
+  } };
+}
 function classify(L) {
   const n = L.name, path = L.path;
   if (PHYS_BY_LAYER[n]) return physPart(L, PHYS_BY_LAYER[n]);
+  // model.json の eyeAttach（レイヤーの名前の一覧。書かなければ、無し = 前と同じ）: 肌の絵から分けた、目のすぐ下の印（ほほの斜線・点）。
+  // 肌の絵に入れたままだと、下を向くと、目が印の上へ滑って隠れ、上を向くと、印が口の横まで取り残される。顔の輪郭の内側だけに描く
+  if ((model.eyeAttach || []).includes(n)) return eyeFollowPart(FACE);
   // ピンごとに分けた髪飾り（model.json の rigidPins。組み立ての道具の pin_split）: 1 本ずつ、留めている房に付いた固い板として動かす
   if (model.rigidPins && model.rigidPins[n]) { const f = makeFrame(model.rigidPins[n], L.x + L.w / 2, L.y + L.h / 2); return { cell: 40, deform: (x, y, out) => f.apply(x, y, out) }; }
   if (CLUMPS && CLUMPS[n]) return clumpPart(L, CLUMPS[n]);
@@ -1423,14 +1436,8 @@ function classify(L) {
     if (/ハート|しいたけ|ぐるぐる|闇/.test(n)) p = eyePart(L, L.x + L.w / 2 < HX ? 'R' : 'L');
     else if ((model.diffAttach || {})[key] === 'eye') {
       // model.json の diffAttach: {"涙": "eye"} のように書いた差分は、目と同じ動きにする（書かなければ、肌の面に貼る = 前と同じ）。
-      // 目は、顔の中で、肌の面とは別に動く（下を向くと下へ滑る・横を向くと、あご先に合わせて余分に動く）。目のすぐ下に描いた涙・汗の粒を、
-      // 肌の面に貼ったままにすると、斜め下で、粒が瞳の上に重なる。1 枚に左右の目のぶんが入っているので、顔のまん中で、左右の目の動きを切り替える
-      const gR = eyes.R.group, gL = eyes.L.group, oa = [0, 0], ob = [0, 0];
-      p = { cell: 20, sel1: NONE, deform: (x, y, out) => {
-        const w = sstep(HX - 50, HX + 50, x);
-        gR.apply(x, y, oa); gL.apply(x, y, ob);
-        out[0] = lerp(oa[0], ob[0], w); out[1] = lerp(oa[1], ob[1], w);
-      } };
+      // 目のすぐ下に描いた涙・汗の粒を、肌の面に貼ったままにすると、斜め下で、粒が瞳の上に重なる（eyeFollowPart）
+      p = eyeFollowPart(NONE);
     }
     else p = skinPart(/汗|涙/.test(n) ? NONE : FACE);
     const a0 = p.alpha || one;
