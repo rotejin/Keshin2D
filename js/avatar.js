@@ -1023,8 +1023,9 @@ const bangsGroup = (name) => (/前髪[67]|エアインテーク/.test(name) ? 's
 //   type        'jelly'    ぷるんと弾む。支点より上は伸び縮みしながら遅れて揺れ、支点より下（ふち）はさらに遅れて波打つ
 //               'cloth'    布のようにしなる（支点から先へ行くほど大きく、遅れて揺れる）
 //               'pendulum' 長さを保って吊り下がる（絵を伸ばさず、弧を描いて曲がる。かしげると真下へ垂れる）
-//               'sprout'   根元（支点）から上へ伸びる毛（アホ毛・立った毛束）。根元は動かさず、先へ行くほど大きく、遅れてしなる（長さは変えず、弧に曲げる）。
-//                          支点より下（髪の下へもぐらせた付け根）は、動かさない。frame（"follow": "auto"）と組にして、根元を、生えている所の房に乗せる
+//               'sprout'   根元（支点）から上へ伸びる毛（アホ毛・立った毛束）。根元は動かさず、根元のまわりに、重さのある毛束として揺れる:
+//                          根元で phi、根元から遠い所ほど phi2（少し遅れて、少し行きすぎる）だけ回す。輪・巻いた毛の形は、つぶさない。
+//                          上下に動くと、少し縮んで太り、伸びて細る（squash）。frame（"follow": "auto"）と組にして、根元を、生えている所の房に乗せる
 //   pivot       支点。基準の箱の中での割合 [x, y]（左上が 0,0）。len: 支点から先の長さ（箱の高さに対する割合。省略で箱の下端まで）
 //   parent      別の揺れ物の id。その揺れ物の変形に乗る（傘のふちに付いた垂れ、など）
 //   gain 大きさ / k 速さ（ばね）/ c 止まりやすさ（減衰）/ grav かしげたとき垂れる量 / tip 先の行きすぎ / squash 伸び縮み / pulse 待機中の脈動
@@ -1034,8 +1035,10 @@ const PHYS_DEF = {
   pendulum: { k: 75, c: 3.2, gain: 1, grav: 1, tip: 1.3, squash: 0, pulse: 0, max: 1.0 },
   // 'rigid' 固い物（アンテナなど）。曲げず、支点のまわりに回るだけ（はずみ）。max は回る角度の上限（ラジアン）
   rigid: { k: 160, c: 9, gain: 0.5, grav: 0, tip: 1, squash: 0, pulse: 0, max: 0.08 },
-  // 'sprout' 根元から上へ伸びる毛。ばねは、前のアホ毛（SWAY.ahoge）と同じ速さ・止まりやすさ。grav は小さく（こしのある毛。かしげても、少し倒れるだけ）
-  sprout: { k: 150, c: 5, gain: 1.6, grav: 0.15, tip: 1.6, squash: 0, pulse: 0, max: 0.45 },
+  // 'sprout' 根元から上へ伸びる毛。ねらいは「重さとこしのある毛束」: 1 秒に約 1.5 往復の速さで、1 回だけ行きすぎて、0.7〜0.9 秒で止まる
+  // （止まりやすさの比 ζ = c / (2√k) ≈ 0.35）。grav は小さく（かしげても、少し倒れるだけ）。
+  // 前の値（k 150・c 5・先の行きすぎ 1.6、先のばねは布と同じ式）は、先だけが最大 ±29°で、1 秒たっても ±14°で揺れ続け（根元は ±7〜12°）、薄い紙がぺらぺら動くように見えた
+  sprout: { k: 90, c: 6.6, gain: 1.3, grav: 0.15, tip: 1.25, squash: 2.5, pulse: 0, max: 0.32 },
 };
 // 揺れ物の付き方を「固い板」にする（spec.frame。書かなければ前と同じ attach の動き）: 付いている点（frame.anchor。省略で支点）の動きだけを、
 // 揺れ物の全体に一次の変換として掛ける（makeFrame）。点ごとに頭の面へ沿わせないので、硬い物（ヘッドホン・アンテナ・ピアス）の形が曲がらない。
@@ -1055,6 +1058,7 @@ for (const spec of model.physics || []) {
   s.len = Math.max(8, (typeof spec.len === 'number' ? spec.len : 1 - pv[1]) * base.h);   // 支点から先（下）の長さ
   s.up = Math.max(8, s.py - base.y);                                                    // 支点から上の高さ（jelly）
   s.hw = Math.max(8, base.w / 2);
+  s.rad = Math.max(s.up, 0.9 * Math.max(s.px - base.x, base.x + base.w - s.px));           // 支点から、いちばん遠い所までの目安（sprout）
   s.def = {}; for (const sl of PHYS_SLIDERS) s.def[sl.key] = s[sl.key];
   PHYS.push(s); PHYS_BY_ID[s.id] = s;
   for (const n of spec.layers) PHYS_BY_LAYER[n] = s;
@@ -1081,16 +1085,14 @@ function physShift(s, x, y, out) {
     return;
   }
   if (s.type === 'sprout') {
-    // 根元（支点）から上へ。根元での角度 phi、先での角度 phi2。その間は一定の割合で曲がる（弧）。長さは変えない（振り子を、上下に返した形）。
-    // 行ごとに横へずらす式（布・前のアホ毛）だと、輪になった毛・巻いた毛が、斜めにつぶれて見える
-    const d = s.py - y, l = x - s.px;
-    if (d <= 0) { out[0] = x; out[1] = y; return; }
-    const dd = Math.min(d, s.up), kap = (s.phi2 - s.phi) / s.up, a = s.phi + kap * dd;
-    let X, Y;
-    if (Math.abs(kap * dd) < 1e-4) { X = dd * Math.sin(s.phi); Y = dd * Math.cos(s.phi); }
-    else { X = (Math.cos(s.phi) - Math.cos(a)) / kap; Y = (Math.sin(a) - Math.sin(s.phi)) / kap; }
-    const ex = d - dd, ca = Math.cos(a), sa = Math.sin(a);                     // 長さより先は、先の向きのまままっすぐ
-    out[0] = s.px + X + ex * sa + l * ca; out[1] = s.py - Y - ex * ca + l * sa;
+    // 根元（支点）のまわりに回す。回す角度は、根元で phi、根元から遠い所ほど phi2 へ近づく（根元からの距離で決める。距離は変えない）。
+    // 高さ（行）ごとに角度を変えて曲げる式だと、輪になった毛・巻いた毛は、同じ輪の上と下で角度が違い、輪が斜めにつぶれた
+    // （毛の道すじは、輪をひと回りしているので、高さは「根元からの遠さ」にならない）。距離で決めれば、輪はほぼ同じ角度で回り、形を保つ。
+    // by（上下のはずみ）: 伸びたぶん細く、縮んだぶん太くする（厚みのある物に見せる）
+    const dx = x - s.px, dy = y - s.py, q = 0.07 * Math.tanh(s.by * s.squash / 0.07);   // 伸び縮みは、7% で頭打ち（ゴムのように伸ばさない）
+    const a = s.phi + (s.phi2 - s.phi) * Math.min(Math.hypot(dx, dy) / s.rad, 1), ca = Math.cos(a), sa = Math.sin(a);
+    const X = dx * (1 - 0.5 * q), Y = dy * (1 + q);
+    out[0] = s.px + X * ca - Y * sa; out[1] = s.py + X * sa + Y * ca;
     return;
   }
   if (s.type === 'cloth') {
@@ -1121,7 +1123,7 @@ function physPart(L, s) {
   // 固い板（spec.frame）: いちばん根元の揺れ物（親をたどった先）の frame を使う。鎖は、アンテナの板に乗る
   let fo = null;
   for (const c of chain) if (c.frame) fo = c;
-  const fr = fo ? (fo.frameObj || (fo.frameObj = makeFrame(fo.frame, fo.px, fo.py))) : null;
+  const fr = fo ? (fo.frameObj || (fo.frameObj = makeFrame(fo.frame, fo.px, fo.py, fo.type === 'sprout'))) : null;
   return {
     cell: s.cell || (s.type === 'pendulum' || s.type === 'sprout' ? 14 : s.type === 'cloth' ? 24 : 40), phys: s,
     deform: (x, y, out) => {
@@ -1158,12 +1160,21 @@ function stepPhys(dt, dv, dvy, roll, time) {
     const sg = s.gain * USER.sway * s.ug;   // 大きさ = キャラの初期値 × 使う人の好み（全体 × 飾りごと）
     s.w -= (a * sg) / 550;
     s.wy -= (ay * sg) / 1100 + (Math.abs(a) * sg) / 9000;      // 横に動いたときも、少し縦に弾む
+    const sprout = s.type === 'sprout';
     for (let i = 0; i < steps; i++) {
       s.w += (-s.k * (s.phi - rest) - s.c * s.w) * h;
       s.phi += s.w * h;
-      s.w2 += (-s.k * 0.55 * (s.phi2 - (rest + (s.phi - rest) * s.tip)) - s.c * 0.45 * s.w2) * h;
-      s.phi2 += s.w2 * h;
-      s.wy += (-s.k * 1.3 * s.by - s.c * 0.5 * s.wy) * h;
+      if (sprout) {
+        // 上へ伸びる毛: 先は、根元のすぐあとを追い、行きすぎは小さく、根元と同じくらい早く止まる（ばねを固く、止まりやすく）。
+        // 上下のはずみも、1 回で止める。布と同じ式（下）では、先と、上下のはずみだけが、長く揺れ続けた
+        s.w2 += (-s.k * 1.8 * (s.phi2 - (rest + (s.phi - rest) * s.tip)) - s.c * 1.3 * s.w2) * h;
+        s.phi2 += s.w2 * h;
+        s.wy += (-s.k * 1.3 * s.by - s.c * 1.2 * s.wy) * h;
+      } else {
+        s.w2 += (-s.k * 0.55 * (s.phi2 - (rest + (s.phi - rest) * s.tip)) - s.c * 0.45 * s.w2) * h;
+        s.phi2 += s.w2 * h;
+        s.wy += (-s.k * 1.3 * s.by - s.c * 0.5 * s.wy) * h;
+      }
       s.by += s.wy * h;
     }
     s.phi = clamp(s.phi, -s.max, s.max);
@@ -1289,9 +1300,13 @@ function earDeform(x, y, out) {
 //   spec = { anchor: [x, y]（モデルの座標）, follow: 房の名前（その房が揺れると、一緒に動く。組み立ての道具が、付いている点を覆う房を選ぶ）,
 //            surf: 'hair'（頭の髪の面。既定）| 'skin'（顔の面）| 'ear'（耳）| 'side'（頭の横から外へ出た物）, z, zx（'side' だけ） }
 //   'side': 奥行き z（顔の半幅の割合）の点として回し、横を向くと、向いた側へは細く、反対側へは広く見せる（zx。makeGroup と同じ）
+//   stand: true（上へ伸びる毛 sprout は、書かなければ true。ほかは false = 前と同じ）: 面から立っている物。位置は、付いている点と同じに動かし、
+//          向きは、頭のかしげだけを写す（面の縮みは写さない）。面に寝ている物（ヘアピン）は、面と一緒に縮むが、面から立つ毛は、縮まない。
+//          写すと、右を向いたときだけ幅が 1 割 狭くなり（左では狭くならない）、下を向くと高さが 6% 縮んだ
 const FRAME_H = 12;
-function makeFrame(spec, ax0, ay0) {
+function makeFrame(spec, ax0, ay0, standDef = false) {
   const ax = spec.anchor ? spec.anchor[0] : ax0, ay = spec.anchor ? spec.anchor[1] : ay0;
+  const stand = typeof spec.stand === 'boolean' ? spec.stand : standDef;
   const f = { ax, ay, stamp: -1, p: [0, 0], J: [1, 0, 0, 1] }, o0 = [0, 0], o1 = [0, 0], o2 = [0, 0];
   let F = null, g = null;
   const resolve = () => {
@@ -1307,6 +1322,13 @@ function makeFrame(spec, ax0, ay0) {
     f.stamp = frameT;
     if (!F) resolve();
     if (g) g.update();
+    if (stand) {
+      F(ax, ay, o0);
+      f.p[0] = o0[0]; f.p[1] = o0[1];
+      const a = Math.atan2(pose.sr, pose.cr), ca = Math.cos(a), sa = Math.sin(a);
+      f.J[0] = ca; f.J[1] = -sa; f.J[2] = sa; f.J[3] = ca;
+      return;
+    }
     F(ax, ay, o0); F(ax + FRAME_H, ay, o1); F(ax, ay + FRAME_H, o2);
     f.p[0] = o0[0]; f.p[1] = o0[1];
     f.J[0] = (o1[0] - o0[0]) / FRAME_H; f.J[1] = (o2[0] - o0[0]) / FRAME_H;
@@ -2827,8 +2849,10 @@ if (model.mouthVector && !keyMouth) {   // キーの形の口（描いた絵の�
   b.addEventListener('click', () => { applySaved(mdef); for (const f of inputs) f(); saveMouth(); });
   root.appendChild(b);
 }
-// ---- 揺れ物（model.json の physics があるモデルだけ）。値はモデルごとにブラウザへ保存する
-const PHYS_KEY = MODEL_NAME + '.phys.v1';
+// ---- 揺れ物（model.json の physics があるモデルだけ）。値はモデルごとにブラウザへ保存する（モデルの初期値が変わったら、前に保存した値は使わない。瞳の動きと同じ）。
+// 前は、初期値が変わっても、ブラウザに残った前の値が優先され、モデルを作り直しても、その人の画面では動きが変わらなかった
+let physHash = 0; for (const ch of JSON.stringify(PHYS.map((s) => [s.id, s.type, s.def]))) physHash = (physHash * 31 + ch.charCodeAt(0)) >>> 0;
+const PHYS_KEY = MODEL_NAME + '.phys.v1.' + physHash.toString(36);
 if (PHYS.length) {
   try {
     const saved = JSON.parse(localStorage.getItem(PHYS_KEY) || '{}');
@@ -3009,7 +3033,9 @@ if (model.mouthVector && model.mouthVector.style === 2) {
   const msg = document.createElement('div'); msg.style.cssText = 'color:#9aa0b0;margin-top:4px';
   b.addEventListener('click', () => {
     const r2 = (v) => Math.round(v * 100) / 100;
-    const o = { tune: {}, params: { mouthForm: r2(target.mouthForm), mouthWidth: r2(target.mouthWidth) } };
+    // 口の形・口の幅は、「手で動かす」で決めた値。ほかの動かし方（おまかせ・カメラ）では、動いている最中の値（ほほえみの途中など）を拾わず、今の初期値を出す
+    const pv = (k) => r2(mode === 'manual' ? target[k] : P_OF[k].def);
+    const o = { tune: {}, params: { mouthForm: pv('mouthForm'), mouthWidth: pv('mouthWidth') } };
     for (const t of TUNE) o.tune[t.key] = r2(tune[t.key]);
     if (model.mouthVector) o.mouthVector = model.mouthVector;
     if (LAYERS.some((L) => L.path === '頭/帽子') && !PHYS_BY_LAYER['帽子']) o.hat = { sway: r2(HAT_SWAY) };
@@ -3019,7 +3045,7 @@ if (model.mouthVector && model.mouthVector.style === 2) {
     o.eyeTune = {}; for (const t of EYE_TUNE) o.eyeTune[t.key] = r2(eyeTune[t.key]);
     if (!ta) makeTa();
     ta.value = JSON.stringify(o, null, 1); ta.select();
-    const done = (ok) => { msg.textContent = (ok ? 'コピーしました。' : '下の文字を選んでコピーしてください。') + 'char.json の同じ名前の項目（tune・params・mouthVector・hat・physics_tune・mouthShapes・keyMouthShapes・eyeTune）と置き換えて、モデルを書き出し直すと初期値になります。口の形・口の幅は、「手で動かす」のスライダーの今の値です。「動きの好み」の % は、使う人の好みなので、入りません。'; };
+    const done = (ok) => { msg.textContent = (ok ? 'コピーしました。' : '下の文字を選んでコピーしてください。') + 'char.json の同じ名前の項目（tune・params・mouthVector・hat・physics_tune・mouthShapes・keyMouthShapes・eyeTune）と置き換えて、モデルを書き出し直すと初期値になります。口の形・口の幅は、「手で動かす」で動かしているときは、そのスライダーの今の値、それ以外のときは、今の初期値です。「動きの好み」の % は、使う人の好みなので、入りません。'; };
     done(false);   // 先に案内を出す（コピーの結果が返ってこない環境がある）
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(ta.value).then(() => done(true), () => done(false));
   });
@@ -3201,6 +3227,8 @@ if (q.has('sim')) {
 } else requestAnimationFrame(frame);
 window.__ready = true;
 window.__state = () => ({ mode, expr: exprName, yaw: cur.yaw, pitch: cur.pitch, user: Object.assign({}, USER) });   // 確認の道具（uicheck.mjs）が読む
+// 揺れ物の今の状態（確認の道具 livecap.mjs --probe が読む。何回揺れて、何秒で止まるかを、数字で見るため）。J は、固い板（frame）の一次の変換
+window.__phys = () => PHYS.map((s) => ({ id: s.id, phi: s.phi, phi2: s.phi2, by: s.by, J: s.frameObj ? Array.from(s.frameObj.J) : null }));
 
 // ---- 計測用（?probe=1）: 今の姿勢で、頭の輪郭・あご先・瞳が画面のどこへ行くかをページのタイトルに書き出す。
 // 顔のパーツの位置関係を、姿勢ごとに数字で比べるためのもの（読むのは partsgen/tools/ref/probe.mjs。奥の目と輪郭は eyeedge.py）

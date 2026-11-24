@@ -16,17 +16,17 @@
   "段階 6（目）: key_eye_scale（シートの目が大きいとき）・key_eye_slope（にらみの目尻に白い四角が出たら 3.5）・iris_dy（つり目で瞳が上まぶたに入り込む絵柄。fidscale.py で瞳孔の下の端と瞳の色の境目を測って決める。例 −20）",
   "段階 6b（小物）: ヘアピンが何本もあれば pin_split: true。ツノ・ヘッドホン・ピアスなど硬い物は extras.physics の frame・type rigid・振り子の stiff（WORKFLOW.md の「硬い小物」）。どのレイヤーにも無い飾りは extras.layers の after で足す（ピアスは after 耳L/耳R）。頭より上へ出る物は pad_top・view を合わせる",
   "段階 6c（口・鼻）: 閉じた口にも歯が見える絵柄は mouthKeySharp: 8。下を向いて口が大きく見えたら tune.mouthDownSize・mouthPitchBend（例 0.8・0.3）。鼻の絵が顔の中心線の片側にあって、横を向くと鼻が線になるときは noseAxis [左を向くとき, 右を向くとき]",
-  "段階 8: ユーザーが画面で書き出した値（tune・params・mouthVector・physics_tune・mouthShapes・keyMouthShapes・eyeTune）を入れる。params は、書き出しにある項目だけ置き換える（browShow などを消さない）",
+  "段階 8: ユーザーが画面で書き出した値（tune・params・mouthVector・physics_tune・mouthShapes・keyMouthShapes・eyeTune）を入れる。params は、書き出しにある項目だけ置き換える（browShow などを消さない）。入れる前に、今の値と 1 項目ずつ比べて、変わった項目を確かめる（変わっていない項目は、さわっていない値）",
   "tune の向きの上限（yawMax 30・upMax 16・downMax 28・rollMax 25）と lash・browBounce・faceFit・mouthFit・eyeFit・headTilt は、kurage02 で、動かして見ながら決めた値。止まる所 2 で、9 方向ボタンで見てもらい、好みの値に置き換える（崩れにくい控えめな上限は 左右 14・上 5・下 4・かしげ 20）",
   "tune のほかの値・params・eyeTune は、手本のキャラで動かしながら決めた値。止まる所 2 のあと、ユーザーが画面で決めた値に置き換える",
-  "段階 0（アホ毛があるキャラ）: アホ毛は、房にも、髪のデザインの絵にも入れない。別に 1 枚描かせて（extras.jobs の 40 以降）、extras.layers に {\"name\": \"アホ毛\", \"job\": \"40\", \"after\": \"前髪1\", \"path\": \"結び髪\", \"under\": <根元を覆う房の名前>}、extras.physics に {\"id\": \"ahoge\", \"label\": \"アホ毛\", \"type\": \"sprout\", \"layers\": [\"アホ毛\"], \"pivot\": <根元（箱の中の割合）>, \"frame\": {\"follow\": \"auto\"}}（WORKFLOW.md の「アホ毛」）",
+  "段階 0（アホ毛があるキャラ）: アホ毛は、房にも、髪のデザインの絵にも入れない。別に 1 枚描かせて（extras.jobs の 40 以降）、extras.layers に {\"name\": \"アホ毛\", \"job\": \"40\", \"after\": \"前髪1\", \"path\": \"結び髪\", \"under\": <根元を覆う房の名前>}、extras.physics に {\"id\": \"ahoge\", \"label\": \"アホ毛\", \"type\": \"sprout\", \"layers\": [\"アホ毛\"], \"pivot\": <根元（箱の中の割合）>, \"frame\": {\"follow\": \"auto\"}}（WORKFLOW.md の「アホ毛」）。動きは、livecap.mjs --probe と physstat.py で数えて確かめる（先の山が 3〜4 個・1.2 秒以内で止まる。小さな毛束は、physics に \"k\": 150 前後・\"c\": 8 前後、大きな輪は、初期の値 k 90・c 6.6 のまま）",
   "段階 6（顔。fidscale.py の顔の拡大で、基準画像と比べて決める）: head_fit_jaw（true。あごの線の左右のまん中が、基準と 10 画素より ずれるとき）・head_fit_pad（[0, 0, 0, 下]。あご先が高い = あごが短いとき）・head_tone_gain（true。head_tone: 0 のキャラで、肌の色が全体にずれるとき）・bang_shadow（{\"opacity\": 0}。基準画像に、髪の影が無いとき）・iris_mirror（true。左右の瞳が鏡写しの絵柄）・key_mouth_scale（{\"closed\": 倍率}。閉じた口の幅が、基準と 1 割より 違うとき）",
   "段階 6（首。輪郭線が黒で、えり・ヘッドホンが首に接しているキャラ）: neck_grow（線の太さ + 余裕。例 31）・neck_line_lum（例 150）・neck_line_black（例 12）・neck_back（true）。mview.py で、首のレイヤーを単体で見て決める（輪郭線が赤茶の絵柄は neck_clean）",
   "段階 6c: 開いた口にキバ・歯が見える絵柄は mouthKeySharp: 8（開く途中で、二重に透ける）",
   "段階 7（髪。頭の横に大きく張り出した房があるキャラ）: 横を向いた頭の全体（yaw=±30）で、奥の側の房が、正面と同じ大きさのまま残るなら、直下に \"hairWrap\": 1（後ろの房を、塊として頭のまわりに回す。URL の hairWrap=0・1 で見比べる）",
   "段階 5c（絵柄による）: 下まぶたの線が、黒と赤茶のまじった細い線の絵柄は、keyshape.py eye の末尾に --lower-rim 8（笑って細めた目で、瞳が、線なしで切れて見える）",
   "段階 7（表情を、横・斜めでも見て決める）: 涙・汗の粒を、目のすぐ下に描いたキャラは \"diffAttach\": {\"涙\": \"eye\", \"汗\": \"eye\"}（斜め下で、粒が瞳に重なる）。奥の目が輪郭をまたぐ向きで、下まぶたの線が輪郭の外へ出るなら \"eyeLineClip\": true",
-  "段階 7（動き）: partsgen/tools/ref/livecap.mjs の mouse・expr・talk で、実際の時間の動きを録って見る（止めた絵を並べる撮り方では、口の切り替わりの途中が写らない）"
+  "段階 7（動き）: partsgen/tools/ref/livecap.mjs の mouse・expr・talk で、実際の時間の動きを録って見る（止めた絵を並べる撮り方では、口の切り替わりの途中が写らない）。揺れ物は、--probe を付けて録り、partsgen/tools/ref/physstat.py で、揺れの山の数と、止まるまでの秒を数える"
  ],
  "iris_hue": [
   150,

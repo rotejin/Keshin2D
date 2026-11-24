@@ -255,6 +255,15 @@ try {
   const fr2 = await frames(1000);
   say(opened === inner.length && fr2 > 10, `中の項目 ${inner.length} 個（${inner.join('・')}）を全部開き、スライダー ${sliders} 本を動かしても、画面が動き続ける（1 秒で ${fr2} フレーム。「好みに合わせる」に見えているスライダーは ${nprefs} 本）`);
   await press(q1('#modes button[data-mode="mouse"]'), 300);   // 手で動かすスライダーを触ったので、マウスへ戻す
+  // 「今の調整値を書き出す」: 「おまかせ」で動いている最中に押しても、口の形・口の幅は、モデルの初期値のまま
+  // （前は、ほほえみの途中の値を拾い、それを char.json に入れると、閉じた口の初期の形が変わった）
+  const pdef = await ev(`fetch('models/${model}/model.json').then((r) => r.json()).then((m) => [(m.params || {}).mouthForm ?? 0, (m.params || {}).mouthWidth ?? 1])`);
+  await press(q1('#modes button[data-mode="demo"]'), 2600);
+  await openSec('export');
+  await ev(`${byText('.sec[data-sec="export"] button', '今の調整値を書き出す')}?.click()`); await sleep(300);
+  let exp = null; try { exp = JSON.parse(await ev(`${q1('.sec[data-sec="export"] textarea')}?.value || 'null'`)); } catch (e) { /* 下で NG になる */ }
+  await press(q1('#modes button[data-mode="mouse"]'), 500);
+  say(!!exp && !!exp.tune && exp.params?.mouthForm === pdef[0] && exp.params?.mouthWidth === pdef[1], `「今の調整値を書き出す」は、「おまかせ」の最中に押しても、口の形・口の幅が初期値のまま（${exp ? JSON.stringify(exp.params) : '書き出しが読めない'}。初期値 ${pdef.join('・')}）`);
 
   // ================= OBS 用の URL =================
   await press(byText('#presets button', 'おちついた'));   // 値を変えてから作る（URL に入るか）

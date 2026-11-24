@@ -1,5 +1,5 @@
 // 実際の時間で動かしながら、画面を録る（動きの確認用）。
-//   node partsgen/tools/ref/livecap.mjs <モデル名> <出力フォルダ> <台本の名前 か 台本.json> [--q "URL に足す指定"] [--size 900] [--fps 30]
+//   node partsgen/tools/ref/livecap.mjs <モデル名> <出力フォルダ> <台本の名前 か 台本.json> [--q "URL に足す指定"] [--size 900] [--fps 30] [--probe]
 //
 // regress.py・seqshoot.py は、?sim=秒 で「その時刻まで一気に進めた 1 枚」を撮る。向きや髪のばねは、それで正しく写るが、
 // 最後の 1 枚を描くときの経過時間が 0 なので、**口のキーの重みなど「描くときに追いかける値」は、行き先へ一気に飛んだ絵になる**
@@ -15,6 +15,7 @@
 // 名前で選べる台本: mouse（左右・斜め・円）、expr（表情の切り替え）、talk（口パクデモ。--q "talkdemo=1" を付ける）、idle（待機）
 //
 // 出力: <出力フォルダ>/f00000.jpg …（撮った絵）と frames.json（コマごとの、録りはじめからの秒）
+//       --probe を付けると probe.json も（1 秒に約 60 回の [秒, 頭の向きなど, 揺れ物ごとの振れ角]。physstat.py が、揺れの回数と、止まるまでの秒を数える）
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import { readFile, mkdir, writeFile, rm } from 'node:fs/promises';
@@ -26,7 +27,8 @@ lowPriority();
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const args = process.argv.slice(2);
 const opt = (n, d) => { const i = args.indexOf(n); if (i < 0) return d; const v = args[i + 1]; args.splice(i, 2); return v; };
-const extraQ = opt('--q', ''), SIZE = +opt('--size', 900), FPS = +opt('--fps', 30);
+const flag = (n) => { const i = args.indexOf(n); if (i < 0) return false; args.splice(i, 1); return true; };
+const extraQ = opt('--q', ''), SIZE = +opt('--size', 900), FPS = +opt('--fps', 30), PROBE = flag('--probe');
 const [model = 'kurage02', outDir, scriptArg = 'mouse'] = args;
 if (!outDir) { console.log('使い方: livecap.mjs <モデル名> <出力フォルダ> <台本>'); process.exit(1); }
 if (!CHROME) { console.log('NG Chrome / Edge が見つかりません'); process.exit(1); }
@@ -106,6 +108,14 @@ try {
     times.push(+t.toFixed(4)); n++;
   };
   await cdp('Page.startScreencast', { format: 'jpeg', quality: 90, maxWidth: SIZE, maxHeight: SIZE, everyNthFrame: 1 });
+  // --probe: 絵と一緒に、数字も録る（頭の向きと、揺れ物の振れ角。1 秒に約 60 回）。揺れが何回・何秒つづくかは、絵を並べるより、数字の方が確か
+  const probe = []; let probing = false;
+  const probeTimer = PROBE ? setInterval(async () => {
+    if (probing || done) return;
+    probing = true;
+    try { const v = await ev('JSON.stringify([window.__state ? window.__state() : null, window.__phys ? window.__phys() : null])'); if (!done) probe.push([+(Date.now() / 1000 - w0).toFixed(4), ...JSON.parse(v)]); } catch (e) { /* 取れなかったコマは、とばす */ }
+    probing = false;
+  }, 16) : null;
   const key = async (k) => { const o = { key: k, text: k, code: /\d/.test(k) ? 'Digit' + k : 'Key' + k.toUpperCase(), windowsVirtualKeyCode: k.toUpperCase().charCodeAt(0) }; await cdp('Input.dispatchKeyEvent', Object.assign({ type: 'keyDown' }, o)); await cdp('Input.dispatchKeyEvent', Object.assign({ type: 'keyUp' }, o)); };
   const log = [];
   for (const [at, kind, ...v] of script) {
@@ -128,8 +138,10 @@ try {
       }
     }
   }
-  done = true; await cdp('Page.stopScreencast'); await Promise.all(writes);
+  done = true; if (probeTimer) clearInterval(probeTimer);
+  await cdp('Page.stopScreencast'); await Promise.all(writes);
   await writeFile(path.join(outDir, 'frames.json'), JSON.stringify({ model, script: scriptArg, size: SIZE, times, log }));
+  if (PROBE) await writeFile(path.join(outDir, 'probe.json'), JSON.stringify(probe));
   const span = times[times.length - 1] - times[0];
   console.log(`done: ${outDir}  ${n} コマ  ${span.toFixed(1)} 秒（1 秒あたり ${(n / Math.max(span, 0.01)).toFixed(1)} コマ）`);
   await finish(0);
