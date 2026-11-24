@@ -142,7 +142,8 @@ def eye_ref(o):
 
 
 def eyec_ref(o):
-    """閉じた目・片目の涙を描かせるときの見本: 髪なしの絵の、画面左の目のまわりを、横 3:縦 2 で切り出して 1536×1024 にする。
+    """閉じた目・片目の涙・目のキーの形のシートを描かせるときの見本: 髪なしの絵の、画面左の目のまわりを、横 3:縦 2 で切り出して 1536×1024 にする
+    （大きさは char.json の eyec_ref_scale = 目の箱の幅の何倍か。既定 1.25。位置は eyec_ref_shift = [dx, dy]。既定は、瞳の中心がまん中）。
     描かせる絵は、この見本と同じキャンバス・同じ位置に描かせる。切り出した範囲は _eyec_ref.json に残し、build2.py が、
     その範囲へ縮めて置く（画面右の目へは、左右を返して置く）。位置を合わせて小さく描かせるより、ずれが小さい"""
     from PIL import Image
@@ -154,7 +155,10 @@ def eyec_ref(o):
     cx, cy = e["box"][0] + e["iris_circle_in_box"][0], e["box"][1] + e["iris_circle_in_box"][1]
     w = int(round((box[2] - box[0]) * float(o.conf.get("eyec_ref_scale", 1.25)) / 6)) * 6          # 3:2 にしやすい幅
     h = w * 2 // 3
-    crop = [int(round(cx - w / 2)), int(round(cy - h / 2)), int(round(cx - w / 2)) + w, int(round(cy - h / 2)) + h]
+    # 範囲のまん中は、瞳の中心。目尻のはねが長い絵柄では、目の全体が、瞳より目尻の側へ寄るので、範囲に、もう片方の目の目頭が入る。
+    # char.json の eyec_ref_shift [dx, dy]（3 倍の絵の画素。書かなければ [0, 0]）で、範囲をずらす（目尻の側へは、dx を負に）
+    sx, sy = [int(round(float(v))) for v in (o.conf.get("eyec_ref_shift") or [0, 0])]
+    crop = [int(round(cx - w / 2)) + sx, int(round(cy - h / 2)) + sy, int(round(cx - w / 2)) + sx + w, int(round(cy - h / 2)) + sy + h]
     im = Image.open(os.path.join(o.work, "01_base_nohair_3x.png")).convert("RGBA").crop(tuple(crop))
     bg = Image.new("RGBA", im.size, (255, 255, 255, 255)); bg.alpha_composite(im)
     bg.convert("RGB").resize((1536, 1024), Image.LANCZOS).save(os.path.join(o.work, "_eyec_ref.png"))

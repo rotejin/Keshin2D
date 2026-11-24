@@ -24,6 +24,15 @@
   --white-shade（eye だけ。書かなければ前と同じ）: 白目の上の、薄い紫がかった灰色の影（まつげの帯の下）も、白目に入れる。
          影が少し赤みを帯びていると（例: (202,184,195)）、白目の色の条件から外れ、白目の上のふち B が、影と白の境目（平らな線）になる。
          モデルで、帯と白目の間に肌色のすき間が開き、影は動かない灰色のまだらとして残った
+  --lower-rim <高さ>（eye だけ。書かなければ前と同じ）: 白目の下のふちの線（下まぶたの線）の全体を、下まつげの絵（eye_under.png）に入れる
+         （開いた目のコマの、白目のすぐ下、この画素数までにある、肌よりはっきり暗い所。黒も赤茶も。CW×CH の上で。例 8）。
+         下まぶたの線のうち、黒い所は、開いた目のキーの絵（上まつげ）に入り、赤茶の所だけが、下まつげの絵に入る。
+         笑って細めた目は、別のキーの絵に替わり、下まぶたが上がって瞳を切るので、線が無いと、瞳と白目が、まっすぐ切れて見える。
+         下まつげの絵は、下まぶたの線について動くので、ここに線の全体があれば、どの目の形でも、瞳の下に線が付く
+  --white-warm <差>（eye だけ。書かなければ 16 = 前と同じ）: 白目と見なす色の、色味の幅（R と、G・B の小さい方の差が、この値未満）。
+         見本（髪なしの絵）の白目がクリーム色のキャラ（例: (254,241,226) は差 28。肌は 60 前後）は、--dark-static で、白目が見つからず、
+         瞳の光が白目に選ばれて、まつげの帯と瞳のふちの全部が「白目から離れた、動かない線」になる（まつげの帯が、ほとんど消える）。
+         白目の差と、肌の差の間の値にする（例 40）。probe.py で、白目と肌の RGB を測って決める
 """
 import sys, os, json
 import numpy as np, cv2
@@ -34,6 +43,8 @@ CW, CH = 768, 512          # コマをそろえる大きさ（見本の範囲を
 LASH_FILL = 0              # まつげの帯に囲まれた穴を、帯に入れる面積の上限（--lash-fill。0 なら前と同じ）
 DARK_STATIC = None         # 黒い輪郭線・耳の線（--dark-static。見本から作る。None なら前と同じ）
 WHITE_SHADE = False        # 白目の上の、赤みのある灰色の影も、白目に入れる（--white-shade。False なら前と同じ）
+WHITE_WARM = 16            # 白目と見なす、色味の幅（R と、G・B の小さい方の差が、これ未満。--white-warm。16 なら前と同じ）
+LOWER_RIM = 0              # 白目の下のふちの線（下まぶたの線）の全体を、下まつげの絵（under）に入れる高さ（--lower-rim。0 なら前と同じ）
 
 
 def dark_static(ref):
@@ -56,15 +67,32 @@ def dark_static(ref):
     # 白目の近くに無い、濃い色の塊（眉・耳の中の線・鼻の影）も、動かない線。目のまわりを広く切り出すと、コマのふちに触れない塊として残り、
     # まぶたと一緒に動いてしまう（眉が、目のすぐ上にある絵柄）。白目の近くの塊（まつげの帯。輪郭線と交わっていても）は残す
     mn = ref.min(2)
-    w0 = ((mn > 150) & ((r - np.minimum(g, b)) < 16)).astype(np.uint8)
+    w0 = ((mn > 150) & ((r - np.minimum(g, b)) < WHITE_WARM)).astype(np.uint8)
     wn_, wl_, ws_, _ = cv2.connectedComponentsWithStats(cv2.morphologyEx(w0, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8)), connectivity=8)
     cand_ = [k for k in range(1, wn_) if ws_[k, 4] >= 300 and ws_[k, 0] > 1 and ws_[k, 0] + ws_[k, 2] < CW - 1 and ws_[k, 1] + ws_[k, 3] < CH - 1]
     if cand_:
-        near_ = cv2.dilate((wl_ == max(cand_, key=lambda k: ws_[k, 4])).astype(np.uint8), np.ones((31, 31), np.uint8)) > 0
+        main_ = wl_ == max(cand_, key=lambda k: ws_[k, 4])
+        near_ = cv2.dilate(main_.astype(np.uint8), np.ones((31, 31), np.uint8)) > 0
         dn_, dl_ = cv2.connectedComponents(dk, connectivity=8)
+        # 目の中（まつげの帯と、瞳のふちに囲まれた所）。見本には瞳が写っているので、瞳孔の黒い輪は「白目から離れた塊」になる。
+        # それを動かない線にすると、閉じかけた目・笑って閉じた目で、下りてきたまつげの帯が、瞳孔のあった所で切れる（シートに瞳は無い）
+        eye_ = np.zeros((CH, CW), bool)
+        for k in range(1, dn_):
+            if ((dl_ == k) & near_).any():
+                eye_ |= dl_ == k
+        eye_ &= ~(m > 0)                                   # 輪郭線・耳の線（はねと交わって、帯とつながっている）は除く
+        ff_ = (eye_ | main_).astype(np.uint8); fm_ = np.zeros((CH + 2, CW + 2), np.uint8); cv2.floodFill(ff_, fm_, (0, 0), 2)
+        inside_ = ff_ != 2
+        iy_, ix_ = np.where(inside_)
+        if len(ix_):
+            # 目の中にある、ほかの白（瞳の向こう側の白目・瞳の光）のそばも、「白目の近く」（目頭側の、まつげの短い線が、帯から離れた塊になる）
+            for k in cand_:
+                cx_, cy_ = ws_[k, 0] + ws_[k, 2] / 2.0, ws_[k, 1] + ws_[k, 3] / 2.0
+                if ix_.min() - 16 <= cx_ <= ix_.max() + 16 and iy_.min() - 16 <= cy_ <= iy_.max() + 16:
+                    near_ |= cv2.dilate((wl_ == k).astype(np.uint8), np.ones((31, 31), np.uint8)) > 0
         for k in range(1, dn_):
             cm_ = dl_ == k
-            if not (cm_ & near_).any():
+            if not (cm_ & near_).any() and (cm_ & ~inside_).any():
                 far[cm_] = 1
     return (m > 0) | (cv2.dilate(far, np.ones((13, 13), np.uint8)) > 0)  # 眉のふちの細い線も残らないように、広めに
 NM = 33                    # 口の線の点の数
@@ -178,7 +206,7 @@ def eye_masks(c, skin_ref, static=None):
     mn = c.min(2)
     lum = 0.3 * r + 0.59 * g + 0.11 * b
     skin_lum = float(0.3 * skin_ref[0] + 0.59 * skin_ref[1] + 0.11 * skin_ref[2])
-    white0 = (mn > 150) & ((r - np.minimum(g, b)) < 16) & (diff > 14)
+    white0 = (mn > 150) & ((r - np.minimum(g, b)) < WHITE_WARM) & (diff > 14)
     if WHITE_SHADE:
         # 影の灰色: 色の幅が小さく（肌は R と B の差が 60 くらい）、B が G より小さくない（紫がかっている）
         white0 = white0 | ((mn > 150) & ((c.max(2) - mn) < 30) & (b >= g - 4) & (diff > 14))
@@ -245,6 +273,21 @@ def eye_masks(c, skin_ref, static=None):
         up = [k for k in range(1, n) if cen[k][1] < wy.min()]
         upbig = max(up, key=lambda k: st[k, 4]) if up else -1
         under = np.isin(lab, [k for k in range(1, n) if (k == upbig) or (k not in up and st[k, 4] >= 12)])
+    if LOWER_RIM and wmain.sum() > 300:
+        # 白目の下のふちの線（下まぶたの線）: 列ごとに、白目のいちばん下の画素のすぐ下 LOWER_RIM 画素のうち、肌よりはっきり暗い所（黒も赤茶も）。
+        # 下まつげの絵（under）に入れる（開いた目のコマのぶんだけが、eye_under.png になる）。under は、下まぶたの線 L について動くので、
+        # 笑って細めた目（下まぶたが上がって、瞳を切る）でも、瞳の下に線が付く
+        darkish_ = (diff > 34) & ~white0 & (lum < skin_lum - 28)
+        below_ = np.zeros((CH, CW), bool)
+        for x_ in np.where(wmain.any(0))[0]:
+            yb_ = int(np.where(wmain[:, x_])[0].max())
+            below_[yb_ + 1:yb_ + 1 + LOWER_RIM, x_] = True
+        rim_ = darkish_ & below_
+        if DARK_STATIC is not None:
+            rim_ &= ~DARK_STATIC
+        rim_ = cv2.morphologyEx(rim_.astype(np.uint8), cv2.MORPH_OPEN, np.ones((2, 2), np.uint8)) > 0      # 1 画素の点は入れない
+        under = under | (rim_ & ~wmain)
+        eye_masks.rim = rim_ & ~wmain                      # do_eye が、まつげの帯と重なる所（線の黒い所）も、下まつげの絵に残すために使う
     return dk & ~wmain, wmain, under, red & ~wmain
 
 
@@ -396,8 +439,9 @@ def do_eye(work, sheet, grid, names, refjson, nohair):
     data["box"] = box
     res = []
     for (c, dx, dy, dskin), name in zip(cs, names):
+        eye_masks.rim = None
         lash, white, under, red = eye_masks(c, skin_ref, static)
-        res.append([name, c, lash, white, dx, dy, dskin, under, red])
+        res.append([name, c, lash, white, dx, dy, dskin, under, red, eye_masks.rim])
     # 列の範囲は、開いた目（open）の白目の範囲。このシートに open が無ければ、前に処理したシートの値
     xr = tuple(data.get("xr") or ()) or None
     for name, c, lash, white, *_ in res:
@@ -413,7 +457,19 @@ def do_eye(work, sheet, grid, names, refjson, nohair):
         grow = cv2.dilate(r_[2].astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (29, 29))) > 0
         add = r_[8] & grow & (xx > xr[0] + 0.6 * (xr[1] - xr[0]))
         r_[2] = r_[2] | add
+        if LASH_FILL:
+            # 赤茶を足したあとに、帯の中に残った小さな穴も、帯に入れる（--lash-fill）。帯の目頭側が、黒から暗い赤茶へ変わる絵柄では、
+            # 足す範囲の境目（白目の幅の 6 割）の左に、足されなかった暗い赤茶が、帯の中の四角い穴として残る
+            ff_ = r_[2].astype(np.uint8).copy(); m_ = np.zeros((CH + 2, CW + 2), np.uint8); cv2.floodFill(ff_, m_, (0, 0), 2)
+            hn_, hlab_, hst_, _ = cv2.connectedComponentsWithStats((ff_ == 0).astype(np.uint8), connectivity=4)
+            for k_ in range(1, hn_):
+                if hst_[k_, 4] <= LASH_FILL:
+                    r_[2] = r_[2] | (hlab_ == k_)
         r_[7] = r_[7] & ~r_[2]
+        if r_[9] is not None:
+            # 下まぶたの線（--lower-rim）は、まつげの帯に入った黒い所も、下まつげの絵に残す（開いた目では、同じ線を 2 枚で描くことになるが、
+            # どちらも下まぶたの線 L について動くので、重なる。笑って細めた目など、別のキーの絵に替わっても、線の全体が残る）
+            r_[7] = r_[7] | r_[9]
     LN = {r_[0]: eye_lines(r_[2], r_[3], xr) for r_ in res if r_[0] != "-"}
     # 二重の線は、半目のコマから取る（まつげの帯が下がって、線が、端から端まで 1 本で見えている）。開いた目のコマでは、線の左半分が
     # まつげのはねに切られて別の塊になり、右の 4 割しか取れなかった（目を閉じると、短い切れ端だけが、まぶたに浮いて見えた）。
@@ -437,7 +493,7 @@ def do_eye(work, sheet, grid, names, refjson, nohair):
         print("二重の線: %s のコマから（x %d〜%d）" % (nm_, kx.min(), kx.max()))
         break
     tiles = []
-    for name, c, lash, white, dx, dy, dskin, under, red in res:
+    for name, c, lash, white, dx, dy, dskin, under, red, _rim in res:
         g = np.zeros((CH, CW, 3), np.float32); g[:] = (60, 200, 90)
         if name == "-":
             tiles.append(np.hstack([c.astype(np.uint8), g.astype(np.uint8)])); continue
@@ -560,6 +616,10 @@ if __name__ == "__main__":
         DARK_STATIC = True; sys.argv.remove("--dark-static")
     if "--white-shade" in sys.argv:
         WHITE_SHADE = True; sys.argv.remove("--white-shade")
+    if "--lower-rim" in sys.argv:
+        i_ = sys.argv.index("--lower-rim"); LOWER_RIM = int(sys.argv[i_ + 1]); del sys.argv[i_:i_ + 2]
+    if "--white-warm" in sys.argv:
+        i_ = sys.argv.index("--white-warm"); WHITE_WARM = float(sys.argv[i_ + 1]); del sys.argv[i_:i_ + 2]
     if len(sys.argv) < 8 or sys.argv[1] not in ("eye", "mouth"):
         sys.exit(__doc__)
     (do_eye if sys.argv[1] == "eye" else do_mouth)(sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5].split(","), sys.argv[6], sys.argv[7])

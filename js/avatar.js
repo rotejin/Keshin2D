@@ -932,6 +932,12 @@ function basePart(L, part) {
 // ?hairBend= で、曲がる大きさの倍率を試せる
 const CLUMPS = model.hairClumps || null;
 const HAIR_BEND = q.has('hairBend') ? +q.get('hairBend') : 1;
+// model.json の hairWrap（0〜1。書かなければ 0 = 前と同じ。?hairWrap= で試せる）: 後ろの房を、形を保ったまま、頭のまわりを回る塊として動かす。
+// 房ごとに、奥行きを 1 つ決める（房の左右のまん中が、頭の中心線から遠いほど浅い。まうしろで 0.5·R0、半幅 1.75·R0 の楕円）。
+// 横を向くと、房の全体が、(まん中の横位置)·(cos − 1) + 奥行き·sin だけ、横へ動く（幅は変えない）:
+//   奥の側の房は、顔の後ろへ大きく回り込み（見える所が小さくなる）、手前の側の房は、少し寄るだけで、幅を保つ。
+// 前（殻に、点ごとに沿わせる）は、頭の横に大きく張り出した房で、手前の房が狭く・奥の房が広くなった（立体として逆）
+const HAIR_WRAP = clamp(q.has('hairWrap') ? +q.get('hairWrap') : (typeof model.hairWrap === 'number' ? model.hairWrap : 0), 0, 1);
 const CL_N = 24;
 function clumpPose(x, y, out) {
   const h = sstep(1260, 1750, y) * 0.7;   // 肩より上の横髪は途中で折れず頭に自然についていく
@@ -953,6 +959,9 @@ function clumpPart(L, k) {
   // 振れ角の上限（ラジアン）。前髪はコンパクトに、横髪・後ろ髪も形を壊さない範囲でコシのある揺れに
   const AMAX = k.g === 'bangs' ? 0.26 : k.g === 'side' ? 0.42 : 0.46, IN_MAX = 0.09, sgIn = k.g === 'side' ? (u < 0 ? -1 : 1) : 0;
   const tab = new Float32Array((CL_N + 1) * 3);                     // 軸の上の点ごとの（軸方向の位置、直角方向の位置、向き）
+  // hairWrap 用: 房の左右のまん中（頭の中心線から）と、その奥行き
+  const wcx = L.x + L.w / 2 - HX, wz = -0.5 * R0 * Math.sqrt(Math.max(0, 1 - (wcx / (1.75 * R0)) ** 2));
+  const wrap = back && !k.shared ? HAIR_WRAP : 0;
   let stamp = -1;
   const update = () => {
     stamp = frameT;
@@ -987,6 +996,11 @@ function clumpPart(L, k) {
         sx = rx + ux * X + wx * Y; sy = ry + uy * X + wy * Y;
       }
       surfMap(S, sx, sy, out);
+      if (wrap > 0) {
+        const z = wz * tune.depth;
+        out[0] = lerp(out[0], sx + wcx * (pose.cosY - 1) + z * pose.sinY + tiltT * (sy - TILT_Y0), wrap);
+        out[1] = lerp(out[1], pitchY(sy, z * pose.cosY), wrap);
+      }
       clumpPose(sx, sy, out);
     },
   };
@@ -1009,6 +1023,8 @@ const bangsGroup = (name) => (/前髪[67]|エアインテーク/.test(name) ? 's
 //   type        'jelly'    ぷるんと弾む。支点より上は伸び縮みしながら遅れて揺れ、支点より下（ふち）はさらに遅れて波打つ
 //               'cloth'    布のようにしなる（支点から先へ行くほど大きく、遅れて揺れる）
 //               'pendulum' 長さを保って吊り下がる（絵を伸ばさず、弧を描いて曲がる。かしげると真下へ垂れる）
+//               'sprout'   根元（支点）から上へ伸びる毛（アホ毛・立った毛束）。根元は動かさず、先へ行くほど大きく、遅れてしなる（長さは変えず、弧に曲げる）。
+//                          支点より下（髪の下へもぐらせた付け根）は、動かさない。frame（"follow": "auto"）と組にして、根元を、生えている所の房に乗せる
 //   pivot       支点。基準の箱の中での割合 [x, y]（左上が 0,0）。len: 支点から先の長さ（箱の高さに対する割合。省略で箱の下端まで）
 //   parent      別の揺れ物の id。その揺れ物の変形に乗る（傘のふちに付いた垂れ、など）
 //   gain 大きさ / k 速さ（ばね）/ c 止まりやすさ（減衰）/ grav かしげたとき垂れる量 / tip 先の行きすぎ / squash 伸び縮み / pulse 待機中の脈動
@@ -1018,6 +1034,8 @@ const PHYS_DEF = {
   pendulum: { k: 75, c: 3.2, gain: 1, grav: 1, tip: 1.3, squash: 0, pulse: 0, max: 1.0 },
   // 'rigid' 固い物（アンテナなど）。曲げず、支点のまわりに回るだけ（はずみ）。max は回る角度の上限（ラジアン）
   rigid: { k: 160, c: 9, gain: 0.5, grav: 0, tip: 1, squash: 0, pulse: 0, max: 0.08 },
+  // 'sprout' 根元から上へ伸びる毛。ばねは、前のアホ毛（SWAY.ahoge）と同じ速さ・止まりやすさ。grav は小さく（こしのある毛。かしげても、少し倒れるだけ）
+  sprout: { k: 150, c: 5, gain: 1.6, grav: 0.15, tip: 1.6, squash: 0, pulse: 0, max: 0.45 },
 };
 // 揺れ物の付き方を「固い板」にする（spec.frame。書かなければ前と同じ attach の動き）: 付いている点（frame.anchor。省略で支点）の動きだけを、
 // 揺れ物の全体に一次の変換として掛ける（makeFrame）。点ごとに頭の面へ沿わせないので、硬い物（ヘッドホン・アンテナ・ピアス）の形が曲がらない。
@@ -1062,6 +1080,19 @@ function physShift(s, x, y, out) {
     out[0] = s.px + X + ex * sa + l * ca; out[1] = s.py + Y + ex * ca - l * sa;
     return;
   }
+  if (s.type === 'sprout') {
+    // 根元（支点）から上へ。根元での角度 phi、先での角度 phi2。その間は一定の割合で曲がる（弧）。長さは変えない（振り子を、上下に返した形）。
+    // 行ごとに横へずらす式（布・前のアホ毛）だと、輪になった毛・巻いた毛が、斜めにつぶれて見える
+    const d = s.py - y, l = x - s.px;
+    if (d <= 0) { out[0] = x; out[1] = y; return; }
+    const dd = Math.min(d, s.up), kap = (s.phi2 - s.phi) / s.up, a = s.phi + kap * dd;
+    let X, Y;
+    if (Math.abs(kap * dd) < 1e-4) { X = dd * Math.sin(s.phi); Y = dd * Math.cos(s.phi); }
+    else { X = (Math.cos(s.phi) - Math.cos(a)) / kap; Y = (Math.sin(a) - Math.sin(s.phi)) / kap; }
+    const ex = d - dd, ca = Math.cos(a), sa = Math.sin(a);                     // 長さより先は、先の向きのまままっすぐ
+    out[0] = s.px + X + ex * sa + l * ca; out[1] = s.py - Y - ex * ca + l * sa;
+    return;
+  }
   if (s.type === 'cloth') {
     const t = clamp((y - s.py) / s.len, 0, 1);
     out[0] = x + s.len * (s.phi * 0.7 * Math.pow(t, 1.6) + s.phi2 * 0.5 * t * t * t);
@@ -1092,7 +1123,7 @@ function physPart(L, s) {
   for (const c of chain) if (c.frame) fo = c;
   const fr = fo ? (fo.frameObj || (fo.frameObj = makeFrame(fo.frame, fo.px, fo.py))) : null;
   return {
-    cell: s.cell || (s.type === 'pendulum' ? 14 : s.type === 'cloth' ? 24 : 40), phys: s,
+    cell: s.cell || (s.type === 'pendulum' || s.type === 'sprout' ? 14 : s.type === 'cloth' ? 24 : 40), phys: s,
     deform: (x, y, out) => {
       tmpP[0] = x; tmpP[1] = y;
       for (const c of chain) physShift(c, tmpP[0], tmpP[1], tmpP);
@@ -1122,7 +1153,8 @@ function stepPhys(dt, dv, dvy, roll, time) {
     const a = onBody ? dvB : dv, ay = onBody ? dvyB : dvy;
     // 振り子は、頭（体）の傾きと同じ向きに振ると真下へ垂れる（headPose・bodyT は、roll が正で時計回り）。
     // 前は、振り子も布と同じ −roll で、傾きの 2 倍、横へ倒れていた（鎖・ピアスなど）。布の向きは、目で合わせてあるので変えない
-    const rest = -(onBody ? body.roll : roll) * s.grav * (s.type === 'pendulum' ? -1 : 1) + 0.004 * Math.sin(time * 0.0013 + s.seed) * (idle ? 1 : 0);
+    // 上へ伸びる毛（sprout）も、振り子と同じ向き（傾けた側へ、先が少し倒れる）
+    const rest = -(onBody ? body.roll : roll) * s.grav * (s.type === 'pendulum' || s.type === 'sprout' ? -1 : 1) + 0.004 * Math.sin(time * 0.0013 + s.seed) * (idle ? 1 : 0);
     const sg = s.gain * USER.sway * s.ug;   // 大きさ = キャラの初期値 × 使う人の好み（全体 × 飾りごと）
     s.w -= (a * sg) / 550;
     s.wy -= (ay * sg) / 1100 + (Math.abs(a) * sg) / 9000;      // 横に動いたときも、少し縦に弾む
@@ -1367,6 +1399,17 @@ function classify(L) {
     const key = n.replace(/[RL]$/, '');
     let p;
     if (/ハート|しいたけ|ぐるぐる|闇/.test(n)) p = eyePart(L, L.x + L.w / 2 < HX ? 'R' : 'L');
+    else if ((model.diffAttach || {})[key] === 'eye') {
+      // model.json の diffAttach: {"涙": "eye"} のように書いた差分は、目と同じ動きにする（書かなければ、肌の面に貼る = 前と同じ）。
+      // 目は、顔の中で、肌の面とは別に動く（下を向くと下へ滑る・横を向くと、あご先に合わせて余分に動く）。目のすぐ下に描いた涙・汗の粒を、
+      // 肌の面に貼ったままにすると、斜め下で、粒が瞳の上に重なる。1 枚に左右の目のぶんが入っているので、顔のまん中で、左右の目の動きを切り替える
+      const gR = eyes.R.group, gL = eyes.L.group, oa = [0, 0], ob = [0, 0];
+      p = { cell: 20, sel1: NONE, deform: (x, y, out) => {
+        const w = sstep(HX - 50, HX + 50, x);
+        gR.apply(x, y, oa); gL.apply(x, y, ob);
+        out[0] = lerp(oa[0], ob[0], w); out[1] = lerp(oa[1], ob[1], w);
+      } };
+    }
     else p = skinPart(/汗|涙/.test(n) ? NONE : FACE);
     const a0 = p.alpha || one;
     p.alpha = key === '赤面' ? () => a0() * Math.max(diffW[key] || 0, F.cheek || 0) : () => a0() * (diffW[key] || 0);
@@ -2105,7 +2148,9 @@ function render(time, dt) {
     if (d.keyEye) {   // キーの形の目: 下まつげ・二重の線を重ねてから、まつげ（キーの絵を重みで足した 1 枚）を重ねる
       const ke = eyes[d.keyEye].ke, free = tune.lash > 0 ? NONE : FACE;
       if (d.over) { if (showHair) makeLayer(() => ke.drawLash(0), free, NONE, d.over); continue; }
-      setBlend(false); setMask(free, NONE); ke.drawUnder();
+      // model.json の eyeLineClip: 下まつげ・目尻の線・二重の線（肌の上の線）は、顔の輪郭の内側だけに描く（書かなければ、まつげと同じ = 前と同じ）。
+      // tune.lash で、上まつげを輪郭の外へ出すモデルでは、奥の目が輪郭をまたぐと、下まぶたの赤い線だけが、輪郭の外の髪の上に浮いて見える
+      setBlend(false); setMask(model.eyeLineClip ? FACE : free, NONE); ke.drawUnder();
       if (Array.isArray(model.lidShadow)) makeLayer(() => ke.drawLash(model.lidShadow[0]), d.keyEye === 'R' ? EYE_R : EYE_L, FACE, model.lidShadow[1]);   // 上まぶたの影（白目と瞳の上だけ）
       makeLayer(() => ke.drawLash(0), free, NONE);
       continue;

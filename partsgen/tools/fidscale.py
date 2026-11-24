@@ -9,6 +9,7 @@
   --fit  3 倍の絵の座標 → モデルの座標（x' = ox + s・x）。省略すると、モデルの model.json の fit（build2.py が書く）。
          古いモデルで fit が無いときは、同じ基準画像から作った別のモデルの値を渡す
 出力の 1 コマは --cell 画素。モデルの絵は、?hair=1&yaw=0&sim=3 に、その範囲の cx・cy・zoom を付けて撮る。
+  --q    URL に足す指定。"hair=0" と書くと、モデルを髪なしで撮る（髪が、目尻のはねや眉を隠すキャラで、目の位置を測るとき）
 """
 import sys, os, json, argparse, subprocess, shutil
 from PIL import Image, ImageDraw
@@ -56,7 +57,8 @@ try:
         poses = []
         for i, (x0, y0, x1, y1) in enumerate(boxes):
             half = s * (y1 - y0) / 2
-            poses.append("b%d=hair=1&yaw=0&sim=3&zoom=%.4f&cx=%.1f&cy=%.1f%s" % (i, 1060 / half, ox + s * (x0 + x1) / 2, oy + s * (y0 + y1) / 2, ("&" + o.q) if o.q else ""))
+            hair = "" if "hair=" in o.q else "hair=1&"            # --q に hair=0 と書けば、髪なしで撮る（目・眉・輪郭を、髪に隠れない形で比べる）
+            poses.append("b%d=%syaw=0&sim=3&zoom=%.4f&cx=%.1f&cy=%.1f%s" % (i, hair, 1060 / half, ox + s * (x0 + x1) / 2, oy + s * (y0 + y1) / 2, ("&" + o.q) if o.q else ""))
         d = os.path.join(tmp, m)
         rc = subprocess.run([sys.executable, "-I", os.path.join(HERE, "regress.py"), "shoot", m, d, "--poses", ";".join(poses), "--size", str(C), "--timeout", "120"],
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT).returncode

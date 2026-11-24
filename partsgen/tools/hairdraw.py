@@ -90,7 +90,12 @@ class Ctx:
             sys.exit('3 倍の絵がありません（先に PY upscale <キャラ名> を）: ' + p)
         im = Image.open(p).convert('RGBA')
         b = Image.new('RGBA', im.size, tuple(bg) + (255,)); b.alpha_composite(im)
-        return b.crop(tuple(pc['box'])).convert('RGB').resize(tuple(pc['size']), Image.LANCZOS)
+        # 範囲が、絵の外へ出てもよい（外は、背景色で埋める）。髪が、絵の幅いっぱい・絵の上の端まであるキャラ（大きく広がる髪、高いアホ毛）は、
+        # 余白を 1 割取ると、範囲が絵からはみ出す。PIL の crop のままだと、はみ出した所が黒くなり、描かせた絵に黒い帯が入る
+        x0, y0, x1, y1 = [int(round(v)) for v in pc['box']]
+        out = Image.new('RGBA', (x1 - x0, y1 - y0), tuple(bg) + (255,))
+        out.paste(b, (-x0, -y0))
+        return out.convert('RGB').resize(tuple(pc['size']), Image.LANCZOS)
 
 
 def on_gray(path):

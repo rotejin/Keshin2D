@@ -7,11 +7,14 @@
   上段: 頭の全体（元の絵 | 00_base | モデルの正面）。key と書いたときは、モデルの代わりに、髪のキービジュアルの案（hair/src/key_*.png）
   下段: 目・鼻・口のあたりの拡大
 
-char.json の項目（どちらも無くても動く）:
+char.json の項目（どちらも無くても動くが、新しいキャラでは、段階 1 で 2 つとも書く。縦横の比をそろえると、同じ大きさで並ぶ）:
   "src_face_box":  [x0, y0, x1, y1]   元の絵（src.png）の中の、頭（髪・髪飾りを含む）の範囲。
                                       元の絵が設定画（全身や後ろ姿が並んだ絵）のときは、顔アップの範囲を書く。無ければ絵の全体
+                                      （そのときは、元の絵の「目鼻口の拡大」は出ない）
   "base_face_box": [x0, y0, x1, y1]   00_base（1024×1536）の中の、頭の範囲。無ければ、build.seed_head と hair.head_r から、
-                                      それも無ければ、絵の上半分から決める
+                                      それも無ければ、絵の上半分から決める（ひな形の seed_head・head_r は、手本のキャラの値なので、
+                                      段階 1 の時点では、頭が切れる）
+範囲が書かれていないときは、その旨を出す（絵は、今までどおりに作る）。
 
 「崩れていないか」の点検（audit・shots）は、元の絵と違っていても通ってしまう。この絵を見て、下の項目を 1 つずつ言葉で答える。
 """
@@ -84,10 +87,13 @@ def main():
     if not os.path.isfile(srcp):
         sys.exit("元の絵がありません: " + srcp)
     src = on_white(Image.open(srcp))
+    notes = []                                  # 頭の範囲が書かれていないときの注意（絵は、今までどおりに作る）
     if conf.get("src_face_box"):
         panels.append(("元の絵", crop_box(src, conf["src_face_box"])))
     else:
         panels.append(("元の絵（全体。char.json に src_face_box を書くと頭だけになる）", src))
+        notes.append("char.json に src_face_box がありません。元の絵は全体のまま並べ、目鼻口の拡大は出しません"
+                     "（src.png の中の、頭 = 髪・髪飾りまで入る範囲を [x0, y0, x1, y1] で書く）")
 
     basep = os.path.join(work, "00_base.png")
     if os.path.isfile(basep):
@@ -98,8 +104,11 @@ def main():
             if seed and r:                      # どちらも 3 倍の絵での値
                 cx, cy, r = seed[0] / 3.0, seed[1] / 3.0, r / 3.0
                 bb = [cx - 1.75 * r, cy - 1.5 * r, cx + 1.75 * r, cy + 2.1 * r]
+                notes.append("char.json に base_face_box がありません。00_base の頭は、build.seed_head と hair.head_r から決めた範囲で切り出しました"
+                             "（ひな形のままなら、手本のキャラの値です。頭が切れていたら、00_base.png の中の頭の範囲を base_face_box に書く）")
             else:
                 bb = [base.width * 0.15, 0, base.width * 0.85, base.width * 0.70]
+                notes.append("char.json に base_face_box がありません。00_base の頭は、絵の上のほうを切り出しました（頭が切れていたら、base_face_box を書く）")
         panels.append(("基準画像 00_base", crop_box(base, bb)))
 
     if model == "key":
@@ -135,6 +144,8 @@ def main():
     outp = os.path.join(work, "_check", "fidelity.png")
     S.save(outp)
     print(outp, S.size)
+    for t in notes:
+        print("注意: " + t)
     print("この絵を見て、元の絵との違いを、次の項目ごとに言葉で答える（「同じ」「違う: どこがどう違うか」）。違いは、直すか、ユーザーに見せて判断してもらう:")
     for i, c in enumerate(CHECKLIST, 1):
         print("  %2d. %s" % (i, c))

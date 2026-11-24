@@ -204,7 +204,11 @@ if os.environ.get("IRIS_BASE"):
                 cyi = (col_.min() + col_.max()) / 2.0 + 3
         cyi += CHAR.get("iris_dy", 0)
         circ_[s_] = (circ_[s_][0], cyi, circ_[s_][2])
-        L["21_iris_" + s_] = _place(pmv, nw_, nh_, int(round(circ_[s_][0] - nw_ / 2.0)), int(round(cyi - nh_ / 2.0)))
+        # char.json の iris_mirror: 画面右の瞳は、左右を返した絵にする（書かなければ、左右とも同じ向き = 前と同じ）。
+        # 瞳孔や光が、瞳のまん中から鼻の側へ寄っている絵柄（左右の瞳が、鏡写し）で使う。同じ向きのままだと、画面右の目だけ、外を見ているように見える。
+        # 光が、左右の瞳で同じ側（光源の側）にある絵柄では、使わない
+        pm_ = pmv[:, ::-1] if (s_ == "R" and CHAR.get("iris_mirror")) else pmv
+        L["21_iris_" + s_] = _place(pm_, nw_, nh_, int(round(circ_[s_][0] - nw_ / 2.0)), int(round(cyi - nh_ / 2.0)))
     print("iris scale %.3f size %dx%d centers" % (sc_, nw_, nh_), [tuple(round(float(t), 1) for t in circ_[s_]) for s_ in "LR"])
 
 # ---------- 片目の拡大の上に描かせた絵（閉じた目・笑って閉じた目・片目の涙）を、左右の目の位置へ置く
@@ -291,10 +295,23 @@ if KEY_DIR and os.path.isfile(os.path.join(KEY_DIR, "eye.json")) and os.path.isf
 if KEY_DIR and os.path.isfile(os.path.join(KEY_DIR, "mouth.json")):
     KEY_MOUTH = json.load(open(os.path.join(KEY_DIR, "mouth.json")))
     mb2_ = KEY_MOUTH["box"]
+    # char.json の key_mouth_scale: {"キーの名前": 横の倍率}（書かなければ 1 = 前と同じ）。そのキーの絵と線を、口のまん中を軸に、横へ縮める・広げる。
+    # 描かせたシートの「閉じた口」（closed）が、基準画像の口より幅広く描かれたときに使う（fidscale.py の口の拡大で、幅を比べて決める）。
+    # 高さは変えない（口の位置を動かさない）。開いた口の大きさは、画面の「母音の口の大きさ」（keyMouthShapes）で決める
+    def key_mouth_box(nm_):
+        sx_ = float((CHAR.get("key_mouth_scale") or {}).get(nm_, 1.0))
+        bw_ = mb2_[2] - mb2_[0]
+        if sx_ == 1.0:
+            return mb2_[0], bw_
+        k_ = KEY_MOUTH["keys"][nm_]
+        cx_ = mb2_[0] + (k_["xa"] + k_["xb"] + 1) / 2.0 * bw_ / float(KEY_MOUTH["canvas"][0])
+        nw_ = int(round(bw_ * sx_))
+        return int(round(cx_ - (cx_ - mb2_[0]) * sx_)), nw_
     for nm_ in KEY_MOUTH["keys"]:
         v_ = imread_rgba(os.path.join(KEY_DIR, "mouth_%s.png" % nm_))
         pm_ = _premult(v_[..., :3].astype(np.float32), v_[..., 3].astype(np.float32) / 255)
-        KEY_MOUTH_IMG[nm_] = _place(pm_, mb2_[2] - mb2_[0], mb2_[3] - mb2_[1], mb2_[0], mb2_[1])
+        kx0_, kbw_ = key_mouth_box(nm_)
+        KEY_MOUTH_IMG[nm_] = _place(pm_, kbw_, mb2_[3] - mb2_[1], kx0_, mb2_[1])
     print("key mouth: box %s, keys %s" % (mb2_, " ".join(KEY_MOUTH["keys"])))
 
 # ---------- 目の線のレイヤーから「肌色で上書きしているだけ」の画素を外す（閉じ目・笑い目で肌色の三角になって見えるため）
@@ -369,11 +386,39 @@ if os.environ.get("HEAD"):
     bx0, bx1, by0, by1 = _bbox(hm_)
     v_ = (v_.astype(np.float32) * hm_[..., None])[by0:by1, bx0:bx1]
     ox0, ox1, oy0, oy1 = _bbox(L["10_head"][1] > 0.5)
+    # char.json の head_fit_pad: [左, 上, 右, 下]（3 倍の絵の画素。書かなければ 0 = 前と同じ）。切り抜いた頭の範囲を、このぶん広げてから、描かせた頭を合わせる。
+    # あごの輪郭線が、首の影とつながった太い黒で描かれた絵柄では、切り抜いた頭が、あごの線の内側（肌の端）で終わる。描かせた頭は、線の外側を
+    # そこへ合わせるので、あごが、線の太さのぶん短くなる（chiwa: 16 画素。口からあご先までが 1 割短かった）。fidscale.py の顔の拡大で、あご先の線の高さを比べて決める
+    hp_ = [int(round(float(t_))) for t_ in (CHAR.get("head_fit_pad") or [0, 0, 0, 0])]
+    ox0, oy0, ox1, oy1 = ox0 - hp_[0], oy0 - hp_[1], ox1 + hp_[2], oy1 + hp_[3]
     or_, oa2 = L["10_head"]
     nr_, na_ = _place(_premult(v_[..., :3], v_[..., 3] / 255), int(ox1 - ox0), int(oy1 - oy0), int(ox0), int(oy0))
+    if CHAR.get("head_fit_jaw"):
+        # char.json の head_fit_jaw: 描かせた頭の左右の位置を、切り抜いた頭の「あごのあたりの、左右のまん中」に合わせる（書かなければ、左右の端に合わせる = 前と同じ）。
+        # 切り抜いた頭は、耳を切り離した所（こめかみの高さ）が、左右で同じ幅に切れるとは限らない。片方だけ外へ出ていると、左右の端のまん中が、
+        # 顔のまん中からずれ、描かせた頭（左右対称）が、目鼻口に対して横へずれて置かれる（chiwa: 14 画素。横を向いたとき、奥の目と輪郭の余裕が、左右で 21 画素違った）。
+        # あごのあたり（頭の高さの 70〜93%）は、耳の切り口の影響を受けない
+        def jaw_cx_(a_):
+            ysj_ = np.where((a_ > 0.5).any(1))[0]
+            tj_, bj_ = int(ysj_.min()), int(ysj_.max())
+            rows_ = [np.where(a_[y_] > 0.5)[0] for y_ in range(int(tj_ + 0.70 * (bj_ - tj_)), int(tj_ + 0.93 * (bj_ - tj_)), 10)]
+            return float(np.median([(r_.min() + r_.max()) / 2.0 for r_ in rows_ if len(r_)]))
+        dxh_ = int(round(jaw_cx_(oa2) - jaw_cx_(na_)))
+        if dxh_:
+            nr_, na_ = _place(_premult(v_[..., :3], v_[..., 3] / 255), int(ox1 - ox0), int(oy1 - oy0), int(ox0) + dxh_, int(oy0))
+        print("head_fit_jaw: 頭を横へ %+d 画素（あごのまん中に合わせた）" % dxh_)
     # 肌のゆるやかな色合い（頬の赤み、額からあごへの濃淡）は、元の絵のものへ戻す。描かせた頭は、赤みが薄く・位置が少し違って出る。
     # 移すのは大きくぼかした差だけなので、切り抜いた頭に残っていた細かい跡は移らない
     both_ = (oa2 > 0.9) & (na_ > 0.9)
+    if CHAR.get("head_tone_gain"):
+        # char.json の head_tone_gain: 描かせた頭の肌の色を、切り抜いた頭の肌の色（中央値）へ、色ごとの倍率 1 つで合わせる（書かなければ、しない = 前と同じ）。
+        # head_tone: 0（場所ごとの色合いを移さない。セル塗り）にしたキャラで、描かせた頭の肌が、全体に少しピンク寄り・黄色寄りになったときに使う。
+        # 倍率なので、黒い輪郭線は黒いまま。場所ごとの差は移さないので、切り抜いた頭に残った跡も移らない
+        sk_ = both_ & (or_.min(-1) > 150) & (nr_.min(-1) > 150)
+        if int(sk_.sum()) > 1000:
+            gn_ = np.median(or_[sk_], 0) / np.maximum(np.median(nr_[sk_], 0), 1.0)
+            nr_ = np.clip(nr_ * gn_, 0, 255)
+            print("head_tone_gain (BGR) %.3f %.3f %.3f" % tuple(float(t_) for t_ in gn_))
     sg_ = 0.018 * (oy1 - oy0)
     wb_ = cv2.GaussianBlur(both_.astype(np.float32), (0, 0), sg_)
     dl_ = cv2.GaussianBlur((or_ - nr_) * both_[..., None], (0, 0), sg_) / np.maximum(wb_[..., None], 1e-3)
@@ -635,7 +680,7 @@ def collar_back(rgb_, a_):
     if not pm_.any():
         return None
     ys2_, xs2_ = np.where(pm_)
-    print("neck_clean: えり裏（首の下に敷く絵） x %d〜%d y %d〜%d" % (xs2_.min(), xs2_.max(), ys2_.min(), ys2_.max()))
+    print("えり裏（首の下に敷く絵。neck_clean・neck_back） x %d〜%d y %d〜%d" % (xs2_.min(), xs2_.max(), ys2_.min(), ys2_.max()))
     return prgb_, np.clip(soft(pm_, 0.8) * 1.3 - 0.15, 0, 1) * pm_
 
 
@@ -645,7 +690,8 @@ if os.environ.get("NECKDOWN"):
     D_rgb, D_a = load(os.environ["NECKDOWN"])
     D_a[D_a < 0.03] = 0
     db, dg, dr = D_rgb[..., 0], D_rgb[..., 1], D_rgb[..., 2]
-    toneD = (dr > 200) & (dg > 125) & (db > 130) & (dr - dg > CHAR.get('tone_rg_min', 8)) & (D_a > 0.9)   # 服が白〜クリーム色のキャラは、下限を上げる
+    # 服が白〜クリーム色のキャラは、赤と緑の差の下限を上げる（tone_rg_min）。肌の影が、青の少ない濃い色のキャラは、青の下限を下げる（tone_bmin。build.py と同じ項目）
+    toneD = (dr > 200) & (dg > 125) & (db > CHAR.get('tone_bmin', 130)) & (dr - dg > CHAR.get('tone_rg_min', 8)) & (D_a > 0.9)
     old_a = L["40_neck"][1]
     oy_, ox_ = np.where(old_a > 0.5)
     lab_n, lab_ = cv2.connectedComponents(toneD.astype(np.uint8))
@@ -660,7 +706,32 @@ if os.environ.get("NECKDOWN"):
         cloth = cloth & ~nline_
     # 首の肌から、輪郭線のぶんだけ外へ広げて首にする。線の太い絵柄では、線の外側が体のレイヤーに細い筋で残り、
     # 首をかしげると、えりの中に動かない線が見える。char.json の neck_grow（既定 15）を大きくする
-    neckm = fill_holes((cv2.dilate(K.astype(np.uint8), ell(int(CHAR.get("neck_grow", 15)))) > 0) & ~cloth & (D_a > 0.05))
+    ring_ = (cv2.dilate(K.astype(np.uint8), ell(int(CHAR.get("neck_grow", 15)))) > 0) & (D_a > 0.05)
+    if CHAR.get("neck_line_lum"):
+        # char.json の neck_line_lum: 広げた所へ入れるのは、首の輪郭線（この明るさより暗い画素）だけにする（書かなければ前と同じ）。
+        # 輪郭線を黒で描く絵柄で、えり・ヘッドホンなどが首に接しているキャラ用（輪郭線が赤茶の絵柄は neck_clean）。
+        #  (1) 「服」は、肌でない所を 15 画素で開いた、いちばん大きい塊。えりがリブ編みで、リブの影の線が肌に近い色だと、えりが影の線で
+        #      細かく切れて、首に接した切れ端が服から外れ、首のレイヤーに入る（首をかしげると、えりの切れ端が首と一緒に動く）。
+        #      → 明るい画素（えり）は、首に入れない
+        #  (2) 輪郭線が、暗い色の服（首の後ろを回るバンド・えりの裏）と接している所は、線と服が 1 つの太い塊になって「服」に入り、
+        #      線が体の絵に残る（首の輪郭線に切れ目ができ、首をかしげると、体に残った線の切れ端が見える）。
+        #      → char.json の neck_line_black（黒の明るさの上限。書かなければ、しない）: 首の肌の「左右の隣」にある、これより暗い画素（黒い輪郭線）は、
+        #        服から外して、首に入れる。こげ茶の服（明るさ 30 前後）は入れない値にする（線の芯は 0〜6。例 12）。
+        #        左右の隣だけにするのは、首の下にある服のふちの線（服のもの）を、首へ取らないため
+        lum_ = 0.114 * db + 0.587 * dg + 0.299 * dr
+        dark_ = ring_ & (lum_ < float(CHAR["neck_line_lum"]))
+        edge_ = (cv2.dilate(K.astype(np.uint8), ell(7)) > 0) & (D_a > 0.05)      # 肌と線の境目の、色のまじった画素
+        if CHAR.get("neck_line_black"):
+            gw_ = int(CHAR.get("neck_grow", 15))
+            side_ = cv2.dilate(K.astype(np.uint8), np.ones((1, 2 * gw_ + 1), np.uint8)) > 0
+            black_ = ring_ & side_ & (lum_ < float(CHAR["neck_line_black"]))
+            cloth = cloth & ~black_
+            print("neck_line_black: 服から外して首に入れた輪郭線の画素 %d" % int(black_.sum()))
+        grown_ = ring_ & ~cloth & (K | dark_ | edge_)
+        print("neck_line_lum: 首に入れた輪郭線の画素 %d" % int((dark_ & ~cloth & ~K).sum()))
+    else:
+        grown_ = ring_ & ~cloth
+    neckm = fill_holes(grown_)
     neckm = largest(neckm)
     bodym = largest((D_a > 0.02) & ~neckm)
     # 襟の下へ少し塗り足す（列ごとに、首の下端の色を下へ延ばす）
@@ -828,7 +899,13 @@ shad = cv2.warpAffine(bang_a, np.float32([[1, 0, 0], [0, 1, 0.022 * Hf]]), (Ww, 
 shad = cv2.GaussianBlur(shad, (0, 0), 0.004 * Hf)
 shadow_rgb = np.empty((Hh, Ww, 3), np.float32)
 shadow_rgb[:] = (188, 170, 232)                     # BGR。肌より少し暗いピンク
-spec.insert([n_ for n_, *_ in spec].index("輪郭ベース") + 1, ("前髪1影", "頭/顔/輪郭/前髪影", (shadow_rgb, shad * 0.9), False, {"opacity": 0.75}))
+# char.json の bang_shadow: {"color": [R, G, B], "opacity": 0〜1}（書かなければ、ピンク・0.75 = 前と同じ）。
+# 肌が黄みのあるクリーム色で、髪の影を顔に落とさない絵柄（セル塗り）では、ピンクの影が、目のまわりの薄紫のしみに見える。
+# 基準画像に影が無ければ opacity 0、あれば、その影の色を color に書く
+BS_ = CHAR.get("bang_shadow") or {}
+if BS_.get("color"):
+    shadow_rgb[:] = tuple(float(v_) for v_ in BS_["color"][::-1])
+spec.insert([n_ for n_, *_ in spec].index("輪郭ベース") + 1, ("前髪1影", "頭/顔/輪郭/前髪影", (shadow_rgb, shad * 0.9), False, {"opacity": float(BS_.get("opacity", 0.75))}))
 # ---------- 表情差分（乗算で顔に重ねる。顔の形での切り抜きはエンジンがする）
 def eye_c(nm):
     ys_, xs_ = np.where(L[nm][1] > 0.5)
@@ -977,8 +1054,10 @@ if os.environ.get("EXTRAS_DIR"):
         EXTRA_NAMES.add(e_["name"])
         print("extras: %s の上に %s" % (e_["after"], e_["name"]))
 
-# えりの裏を、首の下に敷く（char.json の neck_clean。体の絵が決まったあとで作る）
-if CHAR.get("neck_clean") and NECK_MASK is not None:
+# えりの裏を、首の下に敷く（char.json の neck_clean。体の絵が決まったあとで作る）。
+# char.json の neck_back: これだけを使う（neck_clean のほかの直しは、輪郭線が赤茶の絵柄用で、服が赤・肌色・クリーム色のキャラでは使えない。
+# 首の後ろを回るバンド・えりがあるキャラは、首をかしげると、首と、バンドの切り口の間に、すき間が開いて、背景や後ろ髪がのぞく）
+if (CHAR.get("neck_clean") or CHAR.get("neck_back")) and NECK_MASK is not None:
     names_ = [n_ for n_, *_ in spec]
     if "シャツ" in names_ and "首" in names_ and spec[names_.index("シャツ")][2] is not None:
         cb_ = collar_back(*spec[names_.index("シャツ")][2])
@@ -1057,6 +1136,18 @@ if os.environ.get("HAIR_LOCKS") and os.path.isfile(os.environ["HAIR_LOCKS"]):
         names_ = [n_ for n_, *_ in spec]
         j_ = names_.index("前髪1影")
         spec[j_] = spec[j_][:2] + ((shadow_rgb, shad * 0.9),) + spec[j_][3:]
+    # extras.layers の "under": 追加の絵を、房に置き換えたあとのレイヤー（前房08 など）の「すぐ下」へ移す（書かなければ、"after" で入れた場所のまま = 前と同じ）。
+    # "after": "前髪1" で足した絵は、前の髪の房の全部より上に来る。アホ毛のように、髪の中から生えている物は、根元の切り口が、髪の上に乗って見える。
+    # 根元を覆う房（つむじの巻き毛など）の名前を書いて、その下へ入れる。房の名前は、model.json の hairClumps か、hair/locks/_clumps_front.png で見る
+    for e_ in (CHAR.get("extras") or {}).get("layers", []):
+        if e_.get("under"):
+            names_ = [n_ for n_, *_ in spec]
+            if e_["name"] in names_ and e_["under"] in names_:
+                it_ = spec.pop(names_.index(e_["name"]))
+                spec.insert([n_ for n_, *_ in spec].index(e_["under"]), it_)
+                print("extras: %s を、%s のすぐ下へ移しました" % (e_["name"], e_["under"]))
+            elif e_["name"] in names_:
+                print("extras: %s の under（%s）は、モデルにありません（房の名前を確かめます）" % (e_["name"], e_["under"]))
     for e_ in man_.get("front", []) + man_.get("back", []) + ([man_["back_under"]] if CLUMP_ and man_.get("back_under") else []):
         LOCK_META[e_["name"]] = {"g": e_["g"], "d": e_.get("d", 0), "shared": bool(e_.get("shared")),
                                  "root": [round(ox + S * e_["root"][0], 1), round(oy + S * e_["root"][1], 1)],
@@ -1384,12 +1475,17 @@ if KEY_EYE and KEY_EYE_IMG:
         MODEL["keyEyeRest"] = float(CHAR["key_eye_rest"])
 if KEY_MOUTH and KEY_MOUTH_IMG:
     mb2_ = KEY_MOUTH["box"]; kcw_, kch_ = KEY_MOUTH["canvas"]
-    sxk_, syk_ = (mb2_[2] - mb2_[0]) / float(kcw_), (mb2_[3] - mb2_[1]) / float(kch_)
-    MODEL["keyMouth"] = {"keys": {nm_: {"xa": round(ox + S * (mb2_[0] + k_["xa"] * sxk_), 1), "xb": round(ox + S * (mb2_[0] + (k_["xb"] + 1) * sxk_), 1),
+    syk_ = (mb2_[3] - mb2_[1]) / float(kch_)
+    kmb_ = {nm_: key_mouth_box(nm_) for nm_ in KEY_MOUTH["keys"]}            # キーごとの、左の端と幅（key_mouth_scale）
+    MODEL["keyMouth"] = {"keys": {nm_: {"xa": round(ox + S * (kmb_[nm_][0] + k_["xa"] * kmb_[nm_][1] / float(kcw_)), 1),
+                                        "xb": round(ox + S * (kmb_[nm_][0] + (k_["xb"] + 1) * kmb_[nm_][1] / float(kcw_)), 1),
                                         "U": [round(float(oy + S * (mb2_[1] + v_ * syk_)), 1) for v_ in k_["U"]],
                                         "Lo": [round(float(oy + S * (mb2_[1] + v_ * syk_)), 1) for v_ in k_["Lo"]], "open": bool(k_["open"])}
                                   for nm_, k_ in KEY_MOUTH["keys"].items()}}
-for k_ in ("browAmp", "browTint", "lashOver", "lidShadow", "expr", "pinAttach", "mouthKeySharp", "keyMouthShapes", "noseAxis"):
+# eyeLineClip: true で、下まつげ・目尻の線・二重の線を、顔の輪郭の内側だけに描く（奥の目が輪郭をまたぐキャラ。書かなければ前と同じ）
+# diffAttach: {"涙": "eye", "汗": "eye"} のように、表情の差分を、目と同じ動きにする（目のすぐ下に描いた涙・汗の粒。書かなければ、肌の面）
+# hairWrap: 後ろの房を、形を保ったまま、頭のまわりを回る塊として動かす強さ（0〜1。エンジンの HAIR_WRAP。頭の横に大きく張り出した房があるキャラ）
+for k_ in ("browAmp", "browTint", "lashOver", "lidShadow", "expr", "pinAttach", "mouthKeySharp", "keyMouthShapes", "noseAxis", "hairWrap", "diffAttach", "eyeLineClip"):
     if CHAR.get(k_) is not None:
         MODEL[k_] = CHAR[k_]                        # 眉の動きの大きさ、キャラごとの表情の足し・上書き。pinAttach: 髪飾りの動き（"skin" = 頭の面に沿う）
 json.dump(MODEL,
