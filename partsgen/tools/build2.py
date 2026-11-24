@@ -1483,18 +1483,36 @@ for p_ in EXTRAS.get("physics", []):
         if isinstance(e_.get("frame"), dict):
             # 固い板（エンジンの makeFrame）: 付いている点を、支点（最初のレイヤーの箱の中の割合）から出し、"follow": "auto" なら、その点を覆う房を選ぶ
             fr_, l0_, pv_ = dict(e_["frame"]), LAYER_BY_[e_["layers"][0]], e_.get("pivot", [0.5, 0])
-            if "anchor" not in fr_:
-                fr_["anchor"] = [round(l0_["x"] + pv_[0] * l0_["w"], 1), round(l0_["y"] + pv_[1] * l0_["h"], 1)]
-            if fr_.get("follow") == "auto":
-                fr_["follow"] = cover_clump_(*fr_["anchor"])
+            if fr_.get("pin"):
+                # "frame": {"pin": <レイヤーの名前>}: extras.pins に書いた飾り（花など）と、同じ板に乗る（付いている点・房は、その飾りの物を使う）
+                print("frame: %s は、飾り %s の板に乗る" % (e_["id"], fr_["pin"]))
+            else:
+                if "anchor" not in fr_:
+                    fr_["anchor"] = [round(l0_["x"] + pv_[0] * l0_["w"], 1), round(l0_["y"] + pv_[1] * l0_["h"], 1)]
+                if fr_.get("follow") == "auto":
+                    fr_["follow"] = cover_clump_(*fr_["anchor"])
+                print("frame: %s 付いている点 %s 房 %s" % (e_["id"], fr_["anchor"], fr_.get("follow")))
             e_["frame"] = fr_
-            print("frame: %s 付いている点 %s 房 %s" % (e_["id"], fr_["anchor"], fr_.get("follow")))
         PHYS.append(e_)
 if PHYS:
     MODEL["physics"] = PHYS
 if PIN_PIECES:
     MODEL["rigidPins"] = {n_: {"anchor": c_, "follow": cover_clump_(*c_)} for n_, c_ in PIN_PIECES.items()}
     print("rigidPins:", {n_: v_["follow"] for n_, v_ in MODEL["rigidPins"].items()})
+# char.json の extras.pins: {"<レイヤーの名前>": {"follow": "auto", "anchor": [0.5, 0.5]}}（書かなければ前と同じ）
+#   追加で描かせた髪飾り（花など、揺らさない本体）を、留めている房に付いた固い板にする（エンジンの rigidPins。pin_split と同じ動き）。
+#   anchor は、付いている点（そのレイヤーの箱の中の割合。書かなければ、まん中）。follow は、房の名前か "auto"（その点を覆う、いちばん上の前の髪の房）。
+#   同じ飾りに付いた揺れ物（リボン・鎖）は、extras.physics に "frame": {"pin": "<レイヤーの名前>"} と書いて、同じ板に乗せる。
+#   前は、髪飾りの全部を、エンジンの決まった 1 点で動かしていて、横を向くと、留めている髪より約 40 画素 遅れて動いた（付け根が滑る）
+for n_, sp_ in (EXTRAS.get("pins") or {}).items():
+    if n_ not in LAYER_BY_:
+        print("extras.pins: %s は入れません（その名前のレイヤーが、モデルにありません）" % n_)
+        continue
+    l_, pv_ = LAYER_BY_[n_], sp_.get("anchor", [0.5, 0.5])
+    a_ = [round(l_["x"] + pv_[0] * l_["w"], 1), round(l_["y"] + pv_[1] * l_["h"], 1)]
+    fo_ = sp_.get("follow", "auto")
+    MODEL.setdefault("rigidPins", {})[n_] = {"anchor": a_, "follow": cover_clump_(*a_) if fo_ == "auto" else fo_}
+    print("extras.pins: %s 付いている点 %s 房 %s" % (n_, a_, MODEL["rigidPins"][n_]["follow"]))
 if CHAR.get("talkDemo"):
     MODEL["talkDemo"] = CHAR["talkDemo"]            # 「口パクデモ」のせりふ（ひらがな）
 if CHAR.get("mouthShapes"):
@@ -1561,7 +1579,7 @@ if KEY_MOUTH and KEY_MOUTH_IMG:
 # eyeLineClip: true で、下まつげ・目尻の線・二重の線を、顔の輪郭の内側だけに描く（奥の目が輪郭をまたぐキャラ。書かなければ前と同じ）
 # diffAttach: {"涙": "eye", "汗": "eye"} のように、表情の差分を、目と同じ動きにする（目のすぐ下に描いた涙・汗の粒。書かなければ、肌の面）
 # hairWrap: 後ろの房を、形を保ったまま、頭のまわりを回る塊として動かす強さ（0〜1。エンジンの HAIR_WRAP。頭の横に大きく張り出した房があるキャラ）
-for k_ in ("browAmp", "browTint", "lashOver", "lidShadow", "expr", "pinAttach", "mouthKeySharp", "keyMouthShapes", "noseAxis", "hairWrap", "diffAttach", "eyeLineClip"):
+for k_ in ("browAmp", "browTint", "lashOver", "lidShadow", "expr", "pinAttach", "mouthKeySharp", "keyMouthShapes", "noseAxis", "hairWrap", "diffAttach", "eyeLineClip", "hatDome"):
     if CHAR.get(k_) is not None:
         MODEL[k_] = CHAR[k_]                        # 眉の動きの大きさ、キャラごとの表情の足し・上書き。pinAttach: 髪飾りの動き（"skin" = 頭の面に沿う）
 if EYE_MARKS is not None and "目の下の印" in LAYER_NAMES_:

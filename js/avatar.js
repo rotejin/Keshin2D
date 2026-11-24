@@ -381,6 +381,24 @@ const SKIN = {
 // 後ろ髪は頭の後ろ側（奥行きがマイナス）なので、顔と逆向きに動く。
 // 半幅を高さによらず一定にしてあるので、縦に垂れた房は上から下まで同じだけ動く（途中で曲がらない）
 const crown = (r) => (y) => (y < 300 ? r * Math.sqrt(Math.max(0.04, 1 - ((300 - y) / 262) ** 2)) : r);
+// model.json の hatDome（書かなければ、無し = 前と同じ。true か、値を書いた {}。?hatDome=1 で試せる）: 帽子を、丸いドームとして動かす
+// （てっぺんほど、頭の回る軸に近く、前のふちほど、手前にある）。前は、帽子の全部が、同じ奥行きの 1 枚の板だった:
+//   下を向くと、てっぺんが大きく下がって、前のふちは少ししか下がらず、ドームが平たくつぶれて、ふちの下に、髪が長くのぞいた（上から見えるはずの、帽子の上の面が、見えてこない）。
+//   上を向くと、前髪が、ふちの下へ潜った。左右を向くと、前のふちが、その下の前髪より遅れて動いた（帽子が、髪より奥にあるように見えた）。
+//   top・brim      下を向いたときの奥行き（R0 の倍率）: 帽子のてっぺん / 前のふち。ふちは、その下の前髪より、少し余分に下がる（帽子が、額にかぶさる）
+//   upTop・upBrim  上を向いたときの奥行き。差を小さくしてある（下から見ると、ドームは平たく見えるが、帽子の裏は描けないので、つぶしすぎない）
+//   yawTop・yawBrim  左右を向いたときの奥行き。前のふちは、その下の前髪と、ほぼ同じだけ動く
+//   at             前のふちの高さ（帽子の絵の高さに対する割合。上の端が 0）。p: てっぺんからふちへの、奥行きの立ち上がり（大きいほど、てっぺんの近くで急に深くなる）
+const HAT_L = LAYERS.find((L) => L.path === '頭/帽子');
+const HD = (() => {
+  const d = q.has('hatDome') ? (+q.get('hatDome') ? {} : null) : model.hatDome === true ? {} : (model.hatDome || null);
+  if (!d || !HAT_L) return null;
+  const num = (k, def) => (q.has('hd_' + k) ? +q.get('hd_' + k) : typeof d[k] === 'number' ? d[k] : def);
+  const o = { top: num('top', 0.12), brim: num('brim', 1.0), upTop: num('upTop', 0.6), upBrim: num('upBrim', 0.95), yawTop: num('yawTop', 0.3), yawBrim: num('yawBrim', 0.78), p: num('p', 1.8) };
+  o.y0 = HAT_L.y; o.h = Math.max(1, HAT_L.h * num('at', 0.75));
+  o.f = (y) => 1 - Math.pow(1 - clamp((y - o.y0) / o.h, 0, 1), o.p);   // 0（てっぺん）〜 1（前のふちから下）
+  return o;
+})();
 const zero = () => 0;
 const shell = (r, zc, k) => ({ R: crown(r), Zc: (y) => zc * R0 * sstep(40, 420, y), Z0: zero, band: 0, k, bulge: () => 0.1 });
 const SHELL = {
@@ -391,7 +409,10 @@ const SHELL = {
   clumpFront: { R: () => 640, Zc: (y) => lerp(0.55, 0.90, sstep(40, 620, y)) * R0, Z0: zero, band: 0, k: 1, bulge: () => 0.08 },
   clumpBack:  { R: () => 680, Zc: (y) => lerp(-0.22, -0.46, sstep(40, 620, y)) * R0, Z0: zero, band: 0, k: 1, bulge: () => 0.08 },
   // 帽子: 上から下まで同じ奥行き・広い半幅（クラゲの傘・垂れの端まで歪まず一体で頭と一緒に動く）
-  hat: { R: () => 960, Zc: () => 0.50 * R0, Z0: zero, band: 0, k: 1, bulge: () => 0.05 },
+  hat: HD ? { R: () => 960, Zc: (y) => lerp(HD.yawTop, HD.yawBrim, HD.f(y)) * R0, Z0: zero, band: 0, k: 1, bulge: () => 0.05,
+    // 上向きと下向きで、奥行きが違う。正面を通るとき、動く速さが急に変わらないように、正面の近く（上下 約 4°）で、なめらかに切り替える
+    ZP: (y) => { const f = HD.f(y); return lerp(lerp(HD.top, HD.brim, f), lerp(HD.upTop, HD.upBrim, f), sstep(-0.07, 0.07, pose.sinP)) * R0; } }
+    : { R: () => 960, Zc: () => 0.50 * R0, Z0: zero, band: 0, k: 1, bulge: () => 0.05 },
 };
 // 上下の向きの調整値（?pTop= などで試せる）
 //   top: 下向きで頭頂を下げる量（0 にすると頭頂が残り、頭が縦に伸びて見える = 頭のてっぺんが見えてくる）
@@ -432,6 +453,7 @@ function surfMap(S, x, y, out) {
     e *= tune.depth;
     const Ap = clamp(S.Zc(y) * tune.depth - e, -1.2 * R, Math.max(1.2 * R, A)); zP = e + Ap * bell;
   }
+  if (S.ZP) zP = S.ZP(y) * S.k * tune.depth * bell;   // 上下だけ、別の奥行き（帽子のドーム。model.json の hatDome）
   const topW = S.crown ? 1 - sstep(FACE_TOP + 0.06 * FACE_H, FACE_TOP + 0.41 * FACE_H, y) : 0;
   const crownX = sg * as * R0 * topW * 0.2;
   // (3) 奥側の端のふくらみ: 奥を向いた側は頬の丸みが輪郭になるので、少し外へ出る（最大 +0.11R）
@@ -1145,10 +1167,24 @@ function physPart(L, s) {
   // 固い板（spec.frame）: いちばん根元の揺れ物（親をたどった先）の frame を使う。鎖は、アンテナの板に乗る
   let fo = null;
   for (const c of chain) if (c.frame) fo = c;
-  const fr = fo ? (fo.frameObj || (fo.frameObj = makeFrame(fo.frame, fo.px, fo.py, fo.type === 'sprout'))) : null;
+  // frame.pin: 髪飾りの板（model.json の rigidPins。花など、揺れ物でないレイヤー）に乗る。その飾りと、同じ板を使う
+  const fr = fo ? (fo.frameObj || (fo.frameObj = (fo.frame.pin && pinFrame(fo.frame.pin)) || makeFrame(fo.frame, fo.px, fo.py, fo.type === 'sprout'))) : null;
+  // hang: true（書かなければ前と同じ）: 板には、支点だけで乗る。形には、板の伸び縮みを写さず、頭のかしげだけを写す（飾りから下がっている鎖・しずく。
+  // 飾りは、髪の面に寝ているので、奥へ向くと幅が縮むが、そこから下がっている真珠は、丸いまま）
+  const hang = !!(s.hang && fr);
   return {
     cell: s.cell || (s.type === 'pendulum' || s.type === 'sprout' ? 14 : s.type === 'cloth' ? 24 : 40), phys: s,
     deform: (x, y, out) => {
+      if (hang) {
+        physShift(s, x, y, tmpP);
+        const lx = tmpP[0] - s.px, ly = tmpP[1] - s.py;
+        let qx = s.px, qy = s.py;
+        for (let i = 1; i < chain.length; i++) { physShift(chain[i], qx, qy, tmpP); qx = tmpP[0]; qy = tmpP[1]; }
+        fr.apply(qx, qy, out);
+        const a = Math.atan2(pose.sr, pose.cr), ca = Math.cos(a), sa = Math.sin(a);
+        out[0] += lx * ca - ly * sa; out[1] += lx * sa + ly * ca;
+        return;
+      }
       tmpP[0] = x; tmpP[1] = y;
       for (const c of chain) physShift(c, tmpP[0], tmpP[1], tmpP);
       const sx = tmpP[0], sy = tmpP[1];
@@ -1364,6 +1400,15 @@ function makeFrame(spec, ax0, ay0, standDef = false) {
   return f;
 }
 
+// 髪飾りの板（model.json の rigidPins[レイヤーの名前]）。同じ飾りに付いた揺れ物（リボン・鎖）は、spec.frame.pin で、この板に乗る
+// （花と、リボン・鎖が、別々の基準点で動くと、留めている髪が揺れたとき・横を向いたとき、つなぎ目がずれる）
+const PIN_FRAMES = {};
+function pinFrame(n) {
+  const sp = model.rigidPins && model.rigidPins[n], L = byName[n];
+  if (!sp || !L) return null;
+  return PIN_FRAMES[n] || (PIN_FRAMES[n] = makeFrame(sp, L.x + L.w / 2, L.y + L.h / 2));
+}
+
 // 目と同じ動きにするレイヤー（目のすぐ下の、涙・汗の粒や、ほほの斜線）。目は、顔の中で、肌の面とは別に動く
 // （下を向くと下へ滑る・横を向くと、あご先に合わせて余分に動く）。1 枚に左右の目のぶんが入っているので、顔のまん中で、左右の目の動きを切り替える
 function eyeFollowPart(sel) {
@@ -1381,7 +1426,7 @@ function classify(L) {
   // 肌の絵に入れたままだと、下を向くと、目が印の上へ滑って隠れ、上を向くと、印が口の横まで取り残される。顔の輪郭の内側だけに描く
   if ((model.eyeAttach || []).includes(n)) return eyeFollowPart(FACE);
   // ピンごとに分けた髪飾り（model.json の rigidPins。組み立ての道具の pin_split）: 1 本ずつ、留めている房に付いた固い板として動かす
-  if (model.rigidPins && model.rigidPins[n]) { const f = makeFrame(model.rigidPins[n], L.x + L.w / 2, L.y + L.h / 2); return { cell: 40, deform: (x, y, out) => f.apply(x, y, out) }; }
+  if (model.rigidPins && model.rigidPins[n]) { const f = pinFrame(n); return { cell: 40, deform: (x, y, out) => f.apply(x, y, out) }; }
   if (CLUMPS && CLUMPS[n]) return clumpPart(L, CLUMPS[n]);
   if (HFIELD && LOCKS[n]) return lockPart(L, LOCKS[n]);
   if (HFIELD && HBASES[n]) return basePart(L, HBASES[n]);
