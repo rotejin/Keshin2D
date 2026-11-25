@@ -16,7 +16,7 @@
   "段階 6: view（正面の絵を見て、いちばん上の物まで画面に入るように）",
   "段階 6: key_eye_dy・key_eye_rest・iris_scale（fidscale.py の目の拡大で、基準画像と比べて決める）、browTint（髪の上に透かす眉が、髪と同じ色で見えないとき。例 [0.58, 0.5, 0.82]）、neck_clean（首が二重に見えるとき true。服が赤・肌色のキャラでは使わない）",
   "段階 6c: mouthVector・mouthShapes は、キーの形の口では使われない（キーの絵が無いときの控え。そのままでよい）",
-  "段階 5c（絵柄による）: keyshape.py の eye の末尾に、輪郭線を黒で描く絵柄は --dark-static（eyec_ref_scale も広げる。例 1.45）、白目の上に赤みのある灰色の影があれば --white-shade、目尻のはねの中に暗い影がある・帯の目頭側が暗い赤茶へ変わるなら --lash-fill 1500〜4000、見本の白目がクリーム色なら --white-warm 40（WORKFLOW.md 段階 5c の 5）",
+  "段階 5c（絵柄による）: keyshape.py の eye の末尾に、輪郭線を黒で描く絵柄は --dark-static（eyec_ref_scale も広げる。例 1.45）、白目の上に赤みのある灰色の影があれば --white-shade、目尻のはねの中に暗い影がある・帯の目頭側が暗い赤茶へ変わるなら --lash-fill 1500〜4000、見本の白目がクリーム色なら --white-warm 40、白い髪・白い肌で、眉が明るい灰色・目のまわりに淡い影のある絵柄は --white-by-lash --white-min 100 --white-diff 6 --static-min 60 --red-margin 45 を --dark-static・--lash-fill 1500 と一緒に（値は、見本の色を測って決める。WORKFLOW.md 段階 5c の 5）",
   "段階 6（目）: key_eye_scale（シートの目が大きいとき）・key_eye_slope（にらみの目尻に白い四角が出たら 3.5）・iris_dy（つり目で瞳が上まぶたに入り込む絵柄。fidscale.py で瞳孔の下の端と瞳の色の境目を測って決める。例 −20）",
   "段階 6b（小物）: ヘアピンが何本もあれば pin_split: true。ツノ・ヘッドホン・ピアスなど硬い物は extras.physics の frame・type rigid・振り子の stiff（WORKFLOW.md の「硬い小物」）。どのレイヤーにも無い飾りは extras.layers の after で足す（ピアスは after 耳L/耳R）。頭より上へ出る物は pad_top・view を合わせる",
   "段階 6c（口・鼻）: 閉じた口にも歯が見える絵柄は mouthKeySharp: 8。下を向いて口が大きく見えたら tune.mouthDownSize・mouthPitchBend（例 0.8・0.3）。鼻の絵が顔の中心線の片側にあって、横を向くと鼻が線になるときは noseAxis [左を向くとき, 右を向くとき]",
