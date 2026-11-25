@@ -1130,6 +1130,54 @@ if os.environ.get("EXTRAS_DIR"):
         EXTRA_NAMES.add(e_["name"])
         print("extras: %s の上に %s" % (e_["after"], e_["name"]))
 
+# char.json の neck_fit: {"y": 行, "x": [左, 右]}（3 倍の絵の画素。書かなければ、しない = 前と同じ）
+#   首の絵を、横にだけ伸び縮みさせて、その行での左右の端（輪郭線の外側）を、基準画像（01_base_nohair）の首の端に合わせる。
+#   首から下を描かせた絵（11）の首は、基準より細く・横へずれて描かれることがある（kurage02: 右の端が 35〜42 画素 内側。あご先が、首のまん中から
+#   ずれ、右を向いたときだけ、あごが首からはみ出した）。y は、あごより下・えりより上の、首だけが写っている行。x は、基準画像のその行の、首の左右の端。
+#   体の絵（シャツ）は、首のあった所が、首の形の穴になっているので、広げた首の形に合わせて、穴も広げる（えりの裏側の、首の横の所を抜く）。
+#   首の下の端の数画素（手前のえりの、上のふちの線のそば）は、抜かない
+nf_ = CHAR.get("neck_fit")
+if nf_ and NECK_MASK is not None:
+    names_ = [n_ for n_, *_ in spec]
+    row_ = np.where(NECK_MASK[int(nf_["y"])])[0]
+    if "首" in names_ and len(row_):
+        x0_, x1_ = float(row_.min()), float(row_.max())
+        t0_, t1_ = float(nf_["x"][0]), float(nf_["x"][1])
+        sx_ = (t1_ - t0_) / max(x1_ - x0_, 1.0)
+        M_ = np.float32([[sx_, 0, t0_ - sx_ * x0_], [0, 1, 0]])
+        iN_ = names_.index("首")
+        nr_, na_ = spec[iN_][2]
+        wa_ = cv2.warpAffine(na_.astype(np.float32), M_, (Ww, Hh), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+        wr_ = cv2.warpAffine(nr_.astype(np.float32), M_, (Ww, Hh), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+        spec[iN_] = (spec[iN_][0], spec[iN_][1], (wr_, wa_)) + tuple(spec[iN_][3:])
+        old_ = NECK_MASK
+        NECK_MASK = cv2.warpAffine(old_.astype(np.uint8), M_, (Ww, Hh), flags=cv2.INTER_NEAREST, borderMode=cv2.BORDER_CONSTANT, borderValue=0) > 0
+        # 体の穴を広げる: 首の左右の帯（前の端の少し内側から、新しい端の少し外まで）を、体の絵から抜く。
+        # 帯の下の端は、前の穴の下のふち（手前のえりの、上のふちの線）の、端での高さから、外へ行くほど上げる（えりのふちの線は、
+        # 外へ向かって上がる。まっすぐ延ばした線まで抜くと、ふちの黒い線を 8 画素ぶん削った。neck_fit の rise: 1 画素 外へ行くごとに、上げる画素。既定 0.5）。
+        # 広げた首の形そのもので抜くと、えりの切れ込みの中に見えていた肌も横へずれるので、手前のえりに、穴が開いた
+        cut_ = np.zeros((Hh, Ww), bool)
+        rise_ = float(nf_.get("rise", 0.5))
+        for side_, xe_, te_ in ((-1, x0_, t0_), (1, x1_, t1_)):
+            bs_ = [int(np.where(old_[:, x_])[0].max()) for x_ in (int(round(xe_ - side_ * d_)) for d_ in range(6, 22, 3)) if old_[:, x_].any()]
+            if not bs_:
+                continue
+            be_ = float(np.median(bs_))
+            xa_, xb_ = sorted((int(round(xe_ - side_ * 5)), int(round(te_ + side_ * 3))))
+            for x_ in range(max(xa_, 0), min(xb_, Ww - 1) + 1):
+                c_ = np.where(NECK_MASK[:, int(np.clip(x_, min(t0_, t1_) + 2, max(t0_, t1_) - 2))])[0]
+                if len(c_):
+                    cut_[c_.min():max(int(be_ - 2 - rise_ * max(0.0, (x_ - xe_) * side_)), c_.min()), x_] = True
+        n_cut_ = 0
+        for i_ in range(len(spec)):
+            if spec[i_][0] == "シャツ" and spec[i_][2] is not None:
+                r_, a_ = spec[i_][2]
+                n_cut_ += int((cut_ & (a_ > 0.5)).sum())
+                spec[i_] = (spec[i_][0], spec[i_][1], (r_, a_ * (1 - soft(cut_, 0.8)))) + tuple(spec[i_][3:])
+        print("neck_fit: 首を横へ %.3f 倍（%d〜%d → %d〜%d）。体の絵から抜いた画素 %d" % (sx_, x0_, x1_, t0_, t1_, n_cut_))
+    else:
+        print("neck_fit: しません（首のレイヤーが無いか、指定の行に、首がありません）")
+
 # えりの裏を、首の下に敷く（char.json の neck_clean。体の絵が決まったあとで作る）。
 # char.json の neck_back: これだけを使う（neck_clean のほかの直しは、輪郭線が赤茶の絵柄用で、服が赤・肌色・クリーム色のキャラでは使えない。
 # 首の後ろを回るバンド・えりがあるキャラは、首をかしげると、首と、バンドの切り口の間に、すき間が開いて、背景や後ろ髪がのぞく）
