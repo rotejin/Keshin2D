@@ -24,9 +24,12 @@ desktop.ini
 .idea/
 
 # 自分で作ったモデル・設定・起動用の bat（公開リポジトリへ、うっかり入れない。入れるときは git add -f）
+# 同梱のモデルは kurage02 と chiwa の 2 体
 models/*/
 !models/kurage02/
+!models/chiwa/
 partsgen/chars/*/
 !partsgen/chars/_template/
 !partsgen/chars/kurage02/
+!partsgen/chars/chiwa/
 start_*.bat

@@ -3179,6 +3179,19 @@ if (model.mouthVector && model.mouthVector.style === 2) {
   show();
 }
 { const nm = $('#modelname'); if (nm) nm.textContent = MODEL_NAME; }
+// モデルを選ぶ欄。models/index.json（{"models": [{"name": フォルダ名, "label": 表示名}, …]}）に 2 体以上あれば、名前の表示の代わりに出す。
+// tools/serve.py は、この一覧に、models/ の中にあるほかのモデル（自分で作った物）を足して返す。一覧が無い・読めないときは、名前の表示だけ。
+fetch('models/index.json').then((r) => (r.ok ? r.json() : null)).then((j) => {
+  const sel = $('#modelsel'), nm = $('#modelname');
+  const list = (j && Array.isArray(j.models) ? j.models : []).filter((m) => m && /^[A-Za-z0-9_\-]+$/.test(m.name || ''));
+  if (!sel || !list.length) return;
+  if (!list.some((m) => m.name === MODEL_NAME)) list.push({ name: MODEL_NAME });   // 一覧に無いモデルを開いているときも、選ばれた状態で出す
+  if (list.length < 2) return;
+  for (const m of list) { const o = document.createElement('option'); o.value = m.name; o.textContent = m.label || m.name; o.title = m.name; sel.appendChild(o); }
+  sel.value = MODEL_NAME; sel.hidden = false; if (nm) nm.hidden = true;
+  // 選んだら、そのモデルで開き直す。配置・表情・調整の指定は、モデルごとの物なので引き継がない（髪の表示と背景だけ引き継ぐ）
+  sel.addEventListener('change', () => { const p = new URLSearchParams(); p.set('model', sel.value); for (const k of ['hair', 'bg']) if (q.has(k)) p.set(k, q.get(k)); location.search = p.toString(); });
+}).catch(() => { /* 一覧が無ければ、名前の表示だけ */ });
 // 「マウス」を押したら、表情も通常に戻す（いつでも、最初の状態へ戻れるように）
 for (const b of document.querySelectorAll('#modes button')) b.addEventListener('click', () => { if (b.dataset.mode === 'mouse') setExpr('通常'); setMode(b.dataset.mode); });
 $('#mic').addEventListener('change', (e) => { if (e.target.checked) startMic(); else stopMic(); });

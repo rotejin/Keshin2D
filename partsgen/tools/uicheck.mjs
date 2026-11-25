@@ -10,7 +10,8 @@
 //           キャラを作る人向け: 髪の表示、中の項目を全部開いてスライダーを動かす →
 //           OBS 用の URL を作る → スクリプトのエラー・コンソールの警告とエラー・読み込みの失敗が無いか →
 //           Web カメラ（Chrome のテスト用の偽のカメラ。実際のカメラは使わない）を、ボタンと URL（mode=camera）の両方で開く →
-//           OBS 用の URL を開いて、パネルが出ず、値が渡っているか → 外への通信が無いか。終わりに保存値（localStorage）を消す。マイクは押さない。
+//           OBS 用の URL を開いて、パネルが出ず、値が渡っているか → モデルを選ぶ欄で、ほかのモデルへ切り替わるか →
+//           外への通信が無いか。終わりに保存値（localStorage）を消す。マイクは押さない。
 // 途中の画面を <出力フォルダ>/ui_*.png に書く。結果は標準出力に 1 行ずつ出す（ok / NG）。
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
@@ -300,6 +301,18 @@ try {
     const got = await ev(`+document.querySelector('#p_feel > label.sl input').value`);
     await shot('17_obs_view');
     say(r2 && pure && Math.abs(got - 0.5) < 1e-6, `OBS 用の URL を開くと、パネルも「出す」ボタンも出ず、背景は透過で、好みの値が渡っている（髪と飾りの揺れ = ${got}）`);
+  }
+  // ================= モデルを選ぶ欄: 一覧（models/index.json）のモデルが出て、選ぶと、そのモデルで開き直す
+  await cdp('Page.navigate', { url: pageUrl('') }); await waitReady();
+  const ml = await ev(`(() => { const s = ${q1('#modelsel')}; return s && s.getClientRects().length ? { v: s.value, o: [...s.options].map((o) => o.value) } : null; })()`);
+  if (!ml) say(true, 'モデルを選ぶ欄は、出ていない（models/index.json のモデルが 1 体以下）');
+  else {
+    const other = ml.o.find((n) => n !== model), nE = errors.length;
+    await ev(`(() => { const s = ${q1('#modelsel')}; s.value = ${JSON.stringify(other || '')}; s.dispatchEvent(new Event('change')); })()`);
+    let now = '';   // 開き直したページが、読み込みを終えるまで待つ（前のページの「読み込み済み」を拾わないように、URL のモデル名も見る）
+    for (let i = 0; i < 80 && now !== other + '/' + other; i++) { await sleep(500); now = await ev(`window.__ready === true ? new URL(location.href).searchParams.get('model') + '/' + ${q1('#modelsel')}.value : ''`).catch(() => ''); }
+    await shot('18_model_switch');
+    say(ml.v === model && !!other && now === other + '/' + other && errors.length === nE, `モデルを選ぶ欄に、一覧のモデルが出て（${ml.o.join('・')}）、選ぶと、そのモデルで開き直す（${model} → ${other}）`);
   }
   const ext = reqs.filter((u) => !/^http:\/\/127\.0\.0\.1:/.test(u) && !/^(data|blob|about):/.test(u));
   say(ext.length === 0, `外への通信が無い（読み込み ${reqs.length} 件。Web カメラの部品は、同梱の vendor/mediapipe だけ）` + (ext.length ? ': ' + ext.slice(0, 3).join(' ') : ''));

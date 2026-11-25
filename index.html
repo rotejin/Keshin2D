@@ -23,6 +23,9 @@
   .uihead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
   .brand { font-weight: 700; font-size: 14px; letter-spacing: .02em; }
   .brand small { font-weight: 400; color: var(--dim); margin-left: 6px; font-size: 11px; }
+  /* モデルを選ぶ欄（models/index.json に 2 体以上あるときだけ、名前の表示の代わりに出る） */
+  #modelsel { flex: 1; min-width: 0; margin: 0 8px; padding: 3px 6px; font-size: 12px; }
+  #modelsel option { background: #2a2c37; color: var(--text); }
   #ui h2 { font-size: 11px; margin: 14px 0 6px; color: var(--dim); font-weight: 600; letter-spacing: .06em; }
   #ui h2:first-of-type { margin-top: 0; }
   #ui h3 { font-size: 12px; margin: 14px 0 6px; color: #cfd3e0; font-weight: 600; padding-top: 10px; border-top: 1px solid var(--line); }
@@ -109,6 +112,7 @@
 <div id="ui">
   <div class="uihead">
     <span class="brand">Keshin2D<small id="modelname"></small></span>
+    <select id="modelsel" title="モデルを切り替えます" hidden></select>
     <button id="hide" class="ghost" title="パネルを隠す（H キーでも切り替え）">隠す ✕</button>
   </div>
 

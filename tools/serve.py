@@ -10,7 +10,7 @@
   エンジンの js を直しても、ブラウザが前の版を使い続けることがある。
 - 止めるとき: この窓で Ctrl+C を押すか、窓を閉じる。
 """
-import argparse, errno, functools, http.server, os, shutil, subprocess, sys, threading, webbrowser
+import argparse, errno, functools, http.server, json, os, shutil, subprocess, sys, threading, webbrowser
 
 import socket
 
@@ -39,9 +39,41 @@ class NoStore(http.server.SimpleHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         super().end_headers()
 
+    def do_GET(self):
+        # モデルの一覧（画面の、モデルを選ぶ欄が読む）は、models/ の中を見て、そのつど作る（自分で作ったモデルも、一覧に出る）
+        if self.path.split("?", 1)[0] == "/models/index.json":
+            body = json.dumps({"models": list_models()}, ensure_ascii=False).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        super().do_GET()
+
     def log_message(self, fmt, *args):   # 1 回ごとの記録は出さない（失敗だけ出す）
         if len(args) > 1 and str(args[1])[:1] in "45":
             sys.stderr.write("  %s %s\n" % (args[1], args[0]))
+
+
+def list_models():
+    """モデルの一覧 [{"name": フォルダ名, "label": 表示名}, …]。
+    models/index.json（同梱のモデルの並びと表示名。このサーバーを使わない置き方 = GitHub Pages などでは、このファイルがそのまま読まれる）に、
+    models/ の中にある、ほかのモデル（model.json のあるフォルダ）を、名前の順で足す"""
+    models = os.path.join(ROOT, "models")
+    have = lambda name: os.path.isfile(os.path.join(models, name, "model.json"))
+    out = []
+    try:
+        with open(os.path.join(models, "index.json"), encoding="utf-8") as f:
+            for m in json.load(f).get("models", []):
+                if isinstance(m, dict) and isinstance(m.get("name"), str) and have(m["name"]):
+                    out.append(m)
+    except (OSError, ValueError, AttributeError):
+        pass   # 一覧のファイルが無い・読めないときは、フォルダを見た結果だけ
+    seen = {m["name"] for m in out}
+    if os.path.isdir(models):
+        out += [{"name": d} for d in sorted(os.listdir(models)) if d not in seen and have(d)]
+    return out
 
 
 def find_chrome():
