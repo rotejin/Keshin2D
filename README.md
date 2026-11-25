@@ -28,6 +28,7 @@
 
 - **Python 3.8 以上**（標準のライブラリだけで動きます。追加のインストールは要りません。3.10・3.12 で確かめています）
 - **WebGL2 が使えるブラウザ**（Google Chrome・Microsoft Edge で確かめています。Firefox・Safari は確かめていません）
+- **OS**: Windows で作り、実際に動かして確かめています。**macOS・Linux は、GitHub Actions の実行環境（画面を出さない Chrome・GPU なし）で、`start.sh` での起動と、表示・操作の検査が通る所まで**確かめています。実際の Mac・Linux の画面で、人が動かした確認は、まだしていません
 
 自分のキャラクターを作る場合は、さらに次のものが必要です（くわしくは [partsgen/README.md](partsgen/README.md)）。
 
@@ -159,7 +160,7 @@ http://127.0.0.1:8770/index.html?model=kurage02&ui=0&bg=transparent
 
 - **指示 1 つで、いつも同じ質の物ができる、という所までは、まだ確かめていません。** これまでのキャラは、どれも、途中で道具と手順書を直しながら通しました。つまずいた所と直し方は、手順書に入れてありますが、直したあとの手順書だけで、新しいキャラを最初から通し直したことは、まだありません（確かめてある範囲は、`partsgen/MASTER_PROMPT.md` の冒頭）。
 - 生成結果は毎回異なるため、仕上がりには差が出ます。AI が確認できるのは、止めたコマだけなので、動きの感触は、実際に動かして確かめてください。気になった所は、感じたままの言葉で伝えれば足ります（「紙のようにぺらぺらしている」「耳に通っていない感じがする」など）。
-- 道具は Windows で作り、確かめています。ほかの OS では確かめていません。Windows のユーザー名が日本語の PC でも使えます。
+- キャラを作る道具（`partsgen/`）は、Windows で作り、確かめています。macOS・Linux では確かめていません（動かすだけなら、上の「必要なもの」のとおり）。Windows のユーザー名が日本語の PC でも使えます。
 - 渡す絵は、自分が使ってよい絵にしてください。
 
 同梱のチワちゃんを作ったときに、見たこと・決めた値・つまずいた所は、[partsgen/chars/chiwa/NOTES.md](partsgen/chars/chiwa/NOTES.md) に残してあります。
@@ -227,6 +228,10 @@ Python が入っていないか、古い版です。<https://www.python.org/down
 
 - `models/<名前>/model.json` があるかを確かめてください。
 - `start.bat`・`start.sh`・`python tools/serve.py` で開いていれば、自動で出ます。ファイルを置くだけの場所（GitHub Pages など）では、`models/index.json` に、名前を 1 行足します。
+
+### Linux で、パネルの文字が □ になる
+
+日本語のフォントが入っていません。Noto Sans CJK などの日本語フォントを入れてください（Ubuntu・Debian なら `sudo apt install fonts-noto-cjk`）。絵と動きには、影響しません。
 
 ## 新しい版にする
 

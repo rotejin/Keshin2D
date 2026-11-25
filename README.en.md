@@ -29,6 +29,7 @@ The control panel and the character-building documents are in Japanese. This pag
 
 - **Python 3.8 or later** (standard library only, nothing to install; tested with 3.10 and 3.12)
 - **A browser with WebGL2** (tested with Google Chrome and Microsoft Edge; Firefox and Safari are not tested)
+- **Operating system**: made and tested by hand on Windows. **On macOS and Linux it is checked on GitHub Actions machines (headless Chrome, no GPU): starting with `start.sh`, rendering and the control checks pass there.** It has not yet been tried by a person on a real Mac or Linux desktop
 
 To build your own character you also need the following (details in [partsgen/README.md](partsgen/README.md), Japanese):
 
@@ -160,7 +161,7 @@ The finished model goes to `models/<name>/` and opens from the selector at the t
 
 - **It is not yet confirmed that one prompt always gives the same quality.** Every character so far was built while the tools and the workflow were still being fixed. What went wrong and how it was fixed is written into the workflow, but no new character has been run from scratch with the fixed workflow alone (what has been checked is listed at the top of `partsgen/MASTER_PROMPT.md`).
 - Generated pictures differ every time, so results vary. The agent can only check still frames, so judge the motion by moving the model yourself. Telling the agent what feels wrong in your own words is enough.
-- The tools were made and tested on Windows. Other systems are not tested.
+- The character tools in `partsgen/` were made and tested on Windows. They are not tested on macOS or Linux (for just running the viewer, see "What you need" above).
 - The prompt, the workflow and the notes are in Japanese. An agent that reads Japanese can follow them as they are.
 - Use a picture you are allowed to use.
 
@@ -231,6 +232,10 @@ Turning on マイクで口パク makes the browser ask for permission to use the
 
 - Check that `models/<name>/model.json` exists.
 - When started with `start.bat`, `start.sh` or `python tools/serve.py`, it appears automatically. On static hosting such as GitHub Pages, add a line with its name to `models/index.json`.
+
+### On Linux the panel text shows as boxes (□)
+
+No Japanese font is installed. Install one such as Noto Sans CJK (`sudo apt install fonts-noto-cjk` on Ubuntu or Debian). The artwork and the motion are not affected.
 
 ## Updating
 

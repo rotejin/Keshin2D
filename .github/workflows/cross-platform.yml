@@ -1,10 +1,12 @@
 name: Cross-platform check
 
 # Run by hand (Actions → Cross-platform check → Run workflow).
-# Starts the viewer on Linux, macOS and Windows and drives it in headless Chrome
+# Starts the viewer on Linux and macOS and drives it in headless Chrome
 # (partsgen/tools/uicheck.mjs). These machines have no GPU, so rendering is software-only
 # and the timing-dependent items of uicheck may fail; the job result is decided by the
 # essential items only. The full log and the screenshots are in the artifacts.
+# Windows is checked by hand on a PC with a GPU instead: on the hosted Windows machine,
+# software rendering is too slow and the screenshots time out.
 on:
   workflow_dispatch:
 
@@ -19,7 +21,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest]
+
     env:
       AVATAR_SHOOT_SW: "1"
     defaults:
@@ -36,6 +39,11 @@ jobs:
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
+
+      # The hosted Linux machine has no Japanese font; without one the panel text is drawn as boxes.
+      - name: Japanese font (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get install -y --no-install-recommends fonts-noto-cjk
 
       - name: Versions
         run: |
