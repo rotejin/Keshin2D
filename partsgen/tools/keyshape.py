@@ -47,6 +47,11 @@
          まぶたのまわりに、淡いピンクの影（ぼかした濃淡）を塗る絵柄では、影まで「赤茶の線」に入り、下まつげの絵（eye_under.png）に、
          影の切れ端が、ピンクの帯として付く（白目から 27 画素以内の所だけが入るので、形が、途中で切れる）。まつげの帯の目頭側にも、ピンクのかけらが付く。
          線（例: 明るさ 153）は入り、淡い影（例: 170〜185）は入らない値にする（肌の明るさ 204 で、例 45）
+  --soft-lines（eye だけ。書かなければ前と同じ）: 下まつげの絵（eye_under.png）と、目尻の絵（eye_corner.png）を、色のしきい値で切り抜いた形ではなく、
+         「その形のまわり（9 画素 広げて、ふちをぼかした範囲）を、肌より暗いぶんだけ不透明にした絵」にする。まぶたのまわりを、ぼかした濃淡で塗る絵柄
+         （厚塗り）では、下まぶたの影・目尻の影が、線と同じくらい暗く、しきい値で切ると、影のふちが、角ばった枠・ちぎれた帯として絵に入る
+         （--red-margin を動かしても、まわりとの差で線だけを取っても、きれいに取れなかった）。線は、はっきり、影は、なだらかに薄れる絵になる。
+         白目と、まつげの帯（そのふちの 2 画素）は、入れない。--lower-rim と一緒に使う（白目のすぐ下の線は、--lower-rim が入れる）
   --static-min <面積>（eye だけ。--dark-static と一緒に。書かなければ 0 = 前と同じ）: 見本の中の「白目から離れた、濃い塊」のうち、この画素数より小さい物は、
          動かない線にしない。目尻のはねのそばの短い毛・下まつげの点が、白目から離れた小さな塊になり、広げて、シートの帯から四角く抜かれる
          （はねの付け根に、四角い欠けができる）。眉のふち・耳の線・鼻の影（動かない線にしたい物）は、ずっと大きい
@@ -67,6 +72,7 @@ WHITE_MIN = 150            # 白目と見なす明るさの下限（--white-min�
 WHITE_DIFF = 14            # 白目と見なす、肌の色との差の下限（--white-diff。14 なら前と同じ）
 RED_MARGIN = 28            # 赤茶の線と見なす、肌より暗い幅（--red-margin。28 なら前と同じ）
 STATIC_MIN = 0             # 白目から離れた濃い塊のうち、これより小さい物は、動かない線にしない（--static-min。0 なら前と同じ）
+SOFT_LINES = False         # 下まつげ・目尻の絵を、肌より暗いぶんだけ不透明にした、なめらかな絵にする（--soft-lines。False なら前と同じ）
 
 
 def dark_static(ref):
@@ -205,6 +211,22 @@ def soft_rgba(c, mask, core_erode=2):
     a = cv2.GaussianBlur(m.astype(np.float32), (0, 0), 0.9)
     a = np.clip((a - 0.25) / 0.5, 0, 1)
     return np.dstack([inp, (a * 255)]).astype(np.uint8)
+
+
+def matte_rgba(c, mask, skin_ref, block, grow=9, d0=5.0, d1=24.0):
+    """mask（線と影の、おおよその形）のまわりを、肌より暗いぶんだけ不透明にした、透過の絵（--soft-lines）。
+    色は、コマの色そのまま。不透明度 = （肌の明るさ − その画素の明るさ）を d0〜d1 で 0〜1 にした値 ×（mask を grow 画素 広げて、ふちをぼかした範囲）。
+    線（肌より 50 ほど暗い）は不透明、淡い影（10〜20 暗い）は半透明、肌と同じ明るさの所は透明になる。形のふちは、しきい値の切り口ではなく、
+    絵の濃淡のとおりに薄れる。block（白目・まつげの帯とそのふち）は、入れない"""
+    m = cv2.dilate(mask.astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * grow + 1, 2 * grow + 1)))
+    reg = np.clip((cv2.GaussianBlur(m.astype(np.float32), (0, 0), grow * 0.45) - 0.15) / 0.7, 0, 1)
+    lum = 0.3 * c[..., 0] + 0.59 * c[..., 1] + 0.11 * c[..., 2]
+    skin_lum = float(0.3 * skin_ref[0] + 0.59 * skin_ref[1] + 0.11 * skin_ref[2])
+    a = np.clip((skin_lum - lum - d0) / (d1 - d0), 0, 1) * reg
+    a[block] = 0
+    a = cv2.GaussianBlur(a.astype(np.float32), (0, 0), 0.6)
+    a[block] = 0
+    return np.dstack([np.clip(c, 0, 255), a * 255]).astype(np.uint8)
 
 
 def smooth1(v, sig=2.0):
@@ -515,6 +537,15 @@ def do_eye(work, sheet, grid, names, refjson, nohair):
         if kx.max() - kx.min() < 0.6 * (xr[1] - xr[0]):
             continue
         rgba_c, full_c = crease_rgba(r_[1], keep)
+        if SOFT_LINES:
+            # 二重の線も、線のまわりを、肌より暗いぶんだけ不透明にした絵にする（まぶたの淡い影が、線から、なだらかに薄れる）。
+            # まつげのはねが横切る所（帯と、そのふち）だけは、上の「線の色でつないだ絵」を使う（つながないと、目を閉じたとき、切れ目が見える）
+            lz_ = cv2.dilate(r_[2].astype(np.uint8), np.ones((7, 7), np.uint8)) > 0
+            mt_ = matte_rgba(r_[1], keep, skin_ref, lz_, grow=6)
+            ao_ = np.where(lz_, rgba_c[..., 3], 0)
+            use_ = ao_ > mt_[..., 3]
+            mt_[use_] = rgba_c[use_]
+            rgba_c = mt_
         Image.fromarray(rgba_c, "RGBA").save(os.path.join(out, "eye_crease.png"))
         data["crease"] = {"key": nm_}
         crease_view = (nm_, rgba_c)
@@ -538,9 +569,19 @@ def do_eye(work, sheet, grid, names, refjson, nohair):
                 Tl = np.interp(np.arange(CW), np.arange(xa, xb + 1), T) + np.where(np.arange(CW) > xb, 10, 0)
                 under = under & (yy_ >= Tl[None, :])
             corner, keep_u = split_corner(under, white)
-            Image.fromarray(soft_rgba(c, keep_u, core_erode=1), "RGBA").save(os.path.join(out, "eye_under.png"))
-            Image.fromarray(soft_rgba(c, corner, core_erode=1), "RGBA").save(os.path.join(out, "eye_corner.png"))
-            rgba_u = soft_rgba(c, under, core_erode=1)
+            if SOFT_LINES:
+                # 白目は、細い切れ端（目尻の影の中の、明るい筋が、白目に入った物）を落としてから、外す（落とさないと、目尻の絵に、その形の穴が開く）
+                wh_ = cv2.morphologyEx(white.astype(np.uint8), cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (11, 11))) > 0
+                blk_ = wh_ | (cv2.dilate(lash.astype(np.uint8), np.ones((5, 5), np.uint8)) > 0)
+                if data.get("crease"):                   # 二重の線は、別の 1 枚（eye_crease.png）。帯の上のふちより上は、ここには入れない
+                    blk_ = blk_ | (yy_ < Tl[None, :])
+                Image.fromarray(matte_rgba(c, keep_u, skin_ref, blk_), "RGBA").save(os.path.join(out, "eye_under.png"))
+                Image.fromarray(matte_rgba(c, corner, skin_ref, blk_), "RGBA").save(os.path.join(out, "eye_corner.png"))
+                rgba_u = matte_rgba(c, under, skin_ref, blk_)
+            else:
+                Image.fromarray(soft_rgba(c, keep_u, core_erode=1), "RGBA").save(os.path.join(out, "eye_under.png"))
+                Image.fromarray(soft_rgba(c, corner, core_erode=1), "RGBA").save(os.path.join(out, "eye_corner.png"))
+                rgba_u = soft_rgba(c, under, core_erode=1)
         data["keys"][name] = {"xa": xa, "xb": xb, "T": [round(float(v), 2) for v in T], "B": [round(float(v), 2) for v in B], "L": [round(float(v), 2) for v in L],
                               "closed": bool(white.sum() <= 300)}
         al = rgba[..., 3:4] / 255.0
@@ -656,6 +697,8 @@ if __name__ == "__main__":
         i_ = sys.argv.index("--white-diff"); WHITE_DIFF = float(sys.argv[i_ + 1]); del sys.argv[i_:i_ + 2]
     if "--white-min" in sys.argv:
         i_ = sys.argv.index("--white-min"); WHITE_MIN = float(sys.argv[i_ + 1]); del sys.argv[i_:i_ + 2]
+    if "--soft-lines" in sys.argv:
+        SOFT_LINES = True; sys.argv.remove("--soft-lines")
     if "--static-min" in sys.argv:
         i_ = sys.argv.index("--static-min"); STATIC_MIN = int(sys.argv[i_ + 1]); del sys.argv[i_:i_ + 2]
     if len(sys.argv) < 8 or sys.argv[1] not in ("eye", "mouth"):

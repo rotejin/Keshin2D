@@ -389,7 +389,17 @@ const crown = (r) => (y) => (y < 300 ? r * Math.sqrt(Math.max(0.04, 1 - ((300 - 
 //   upTop・upBrim  上を向いたときの奥行き。差を小さくしてある（下から見ると、ドームは平たく見えるが、帽子の裏は描けないので、つぶしすぎない）
 //   yawTop・yawBrim  左右を向いたときの奥行き。前のふちは、その下の前髪と、ほぼ同じだけ動く
 //   at             前のふちの高さ（帽子の絵の高さに対する割合。上の端が 0）。p: てっぺんからふちへの、奥行きの立ち上がり（大きいほど、てっぺんの近くで急に深くなる）
-const HAT_L = LAYERS.find((L) => L.path === '頭/帽子');
+// model.json の hatParts（書かなければ、無し = 前と同じ）: 帽子の絵を、重ね順の違う何枚かに分けたモデル（ヘッドホンのバンドは髪の上・カップは横の房の奥、など）。
+// どれも同じ面（SHELL.hat）で動かすので、分けた所のつなぎ目は、ずれない。ドームの高さ（y0・h）は、分けた全部を合わせた範囲で決める
+// （分けないモデルは、前と同じく、最初の 1 枚の範囲）
+const HAT_L = (() => {
+  const a = LAYERS.filter((L) => L.path === '頭/帽子');
+  if (!Array.isArray(model.hatParts) || a.length < 2) return a[0];
+  const b = a.filter((L) => L.name === '帽子' || model.hatParts.includes(L.name));
+  if (b.length < 2) return a[0];
+  const y0 = Math.min(...b.map((L) => L.y)), y1 = Math.max(...b.map((L) => L.y + L.h));
+  return { y: y0, h: y1 - y0 };
+})();
 const HD = (() => {
   const d = q.has('hatDome') ? (+q.get('hatDome') ? {} : null) : model.hatDome === true ? {} : (model.hatDome || null);
   if (!d || !HAT_L) return null;

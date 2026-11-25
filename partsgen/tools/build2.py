@@ -1329,6 +1329,51 @@ if os.environ.get("HAIR_LOCKS") and os.path.isfile(os.environ["HAIR_LOCKS"]):
             spec[j_] = spec[j_][:2] + ((hr_ * (1 - k_) + fill_ * k_, ha_),) + spec[j_][3:]
             print("head_scalp: 頭頂の肌を、後頭部の髪の色で塗った画素", int(m_.sum()))
 
+# ---------- 帽子の絵の一部を、別のレイヤーに分ける（char.json の hat_parts。書かなければ、しない = 前と同じ）
+#   [{"name": レイヤー名, "box": [x0, y0, x1, y1], "cut": [x0, y0, x1, y1]}, ...]（3 倍の絵の画素）
+#   同じ 1 つの硬い物でも、髪との重なりが、場所で違う物に使う（ヘッドホン: 頭の上のバンドと金具は髪の上、耳のカップは、外側の髪の手前・顔の横の房の奥）。
+#   box に入る所を、別のレイヤー（パスは帽子と同じ = エンジンは、同じ面・同じ式で動かす。分けた所のつなぎ目は、ずれない）にして、帽子のすぐ下へ入れる。
+#   帽子からは、cut に入る所を抜く（省略で box と同じ）。box を cut より広く取ると、その差の所は、両方のレイヤーに同じ絵が入る
+#   （2 枚は、別々の網で動かすので、ぴったり切り分けると、つなぎ目に、細いすき間が出ることがある）。重ね順は、下の layer_order で決める。
+#   エンジンには、分けたレイヤーの名前を hatParts として渡す（帽子のドームの高さを、分けた全部を合わせた範囲で決める）
+HAT_PARTS = []
+for hp_ in CHAR.get("hat_parts") or []:
+    names_ = [n_ for n_, *_ in spec]
+    if "帽子" not in names_ or spec[names_.index("帽子")][2] is None:
+        print("hat_parts: 帽子のレイヤーが無いので、%s は分けません" % hp_.get("name"))
+        continue
+    i_ = names_.index("帽子")
+    r_, a_ = spec[i_][2]
+
+    def hat_box_(b_):
+        m_ = np.zeros(a_.shape, bool)
+        m_[max(0, int(b_[1])):max(0, int(b_[3])), max(0, int(b_[0])):max(0, int(b_[2]))] = True
+        return m_
+    mb_ = hat_box_(hp_["box"])
+    mc_ = hat_box_(hp_.get("cut", hp_["box"])) & mb_
+    if not (a_ * mb_ > 0.5).any():
+        print("hat_parts: %s の box に、帽子の絵がありません（範囲を確かめます）" % hp_["name"])
+        continue
+    spec.insert(i_, (hp_["name"], spec[i_][1], (r_, a_ * mb_), False))
+    spec[i_ + 1] = spec[i_ + 1][:2] + ((r_, a_ * ~mc_),) + spec[i_ + 1][3:]
+    HAT_PARTS.append(hp_["name"])
+    print("hat_parts: 帽子から %s を分けた（%d 画素。帽子から抜いた所 %d 画素）" % (hp_["name"], int((a_ * mb_ > 0.5).sum()), int((a_ * mc_ > 0.5).sum())))
+
+# ---------- レイヤーの重ね順を、置き直す（char.json の layer_order。書かなければ、しない = 前と同じ）
+#   [{"name": 動かすレイヤー, "under": 相手}, {"name": 動かすレイヤー, "over": 相手}, ...]（書いた順に行う。under = 相手のすぐ下、over = 相手のすぐ上）
+#   房の重ね順は、道具が、絵から決める。髪の間を通る硬い物（ヘッドホンのバンドの上に、まん中の前髪の根元が掛かる、など）は、
+#   基準画像の重なりを見て、ここで決める。房の名前は、model.json の hairClumps か、hair/locks/_clumps_front.png で見る（房を作り直すと、番号が変わることがある）
+for mv_ in CHAR.get("layer_order") or []:
+    names_ = [n_ for n_, *_ in spec]
+    tgt_ = mv_.get("under") or mv_.get("over")
+    if mv_.get("name") not in names_ or tgt_ not in names_ or mv_.get("name") == tgt_:
+        print("layer_order: %s は動かしません（%s が、モデルにありません。名前を確かめます）" % (mv_.get("name"), " と ".join(n_ for n_ in (mv_.get("name"), tgt_) if n_ not in names_) or tgt_))
+        continue
+    it_ = spec.pop(names_.index(mv_["name"]))
+    j_ = [n_ for n_, *_ in spec].index(tgt_)
+    spec.insert(j_ if mv_.get("under") else j_ + 1, it_)
+    print("layer_order: %s を、%s のすぐ%sへ移しました" % (mv_["name"], tgt_, "下" if mv_.get("under") else "上"))
+
 layers, alpha_of = [], {}
 PIN_PIECES = {}                          # ピンごとに分けた髪飾りの、付いている点（モデルの座標。pin_split）
 comp = np.zeros((OH + PADY, OW, 3), np.float32)
@@ -1586,6 +1631,8 @@ if CHAR.get("hair_rigid"):
     MODEL["hairRigid"] = CHAR["hair_rigid"]        # 頭に付けたまま動かす髪のレイヤー名（編み込み・お団子など。揺らすと、ぶらぶらして見える）
 if CHAR.get("hat"):
     MODEL["hat"] = CHAR["hat"]          # 帽子のふちの揺れ（{"sway": 前髪の揺れに対する倍率}）
+if [n_ for n_ in HAT_PARTS if n_ in LAYER_NAMES_]:
+    MODEL["hatParts"] = [n_ for n_ in HAT_PARTS if n_ in LAYER_NAMES_]   # 帽子から分けたレイヤー（char.json の hat_parts）。エンジンは、帽子のドームの高さを、帽子と、これらを合わせた範囲で決める
 if KEY_EYE and KEY_EYE_IMG:
     kb_ = KEY_EYE["box"]; kcw_, kch_ = KEY_EYE["canvas"]
     sxk_, syk_ = (kb_[2] - kb_[0]) / float(kcw_), (kb_[3] - kb_[1]) / float(kch_)
