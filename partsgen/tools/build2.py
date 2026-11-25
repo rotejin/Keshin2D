@@ -290,7 +290,7 @@ if KEY_DIR and os.path.isfile(os.path.join(KEY_DIR, "eye.json")) and os.path.isf
         v_ = imread_rgba(fp_)
         if nm_ == "crease" and CHAR.get("key_eye_crease_tint"):
             # char.json の key_eye_crease_tint: [R, G, B]（書かなければ、しない = 前と同じ）。二重の線の、赤い所の色を、この色にする（不透明度は、そのまま）。
-            # 目のシートの二重の線が、基準画像の線（淡いピンク）より、赤く濃く描かれたときに使う（kurochiwa: シート 232,48,59・基準 245,171,169。
+            # 目のシートの二重の線が、基準画像の線（淡いピンク）より、赤く濃く描かれたときに使う（開発中のキャラ kurochiwa: シート 232,48,59・基準 245,171,169。
             # 目の上に、赤い線が 1 本、はっきり見えた）。色は、probe.py で、基準画像（01_base_nohair）の二重の線を測って書く。
             # 線の、目頭の側の濃い所（こげ茶・黒）は、変えない: 赤み（R − B）が 40 より大きい画素から寄せはじめ、120 以上で、その色にする
             tc_ = np.array([float(t_) for t_ in CHAR["key_eye_crease_tint"]][::-1], np.float32)      # 絵は BGR の順
@@ -465,7 +465,7 @@ if EM_.get("boxes"):
     mk_r_, mk_a_ = np.zeros_like(hr_), np.zeros((Hh, Ww), np.float32)
     thr_, mg_ = float(EM_.get("thr", 14)), 16
     # "shift": [[dx, dy], …]（範囲ごと。3 倍の絵の画素。書かなければ、ずらさない = 前と同じ）: 分けた印を、このぶん動かして置く。
-    # 描かせた頭（36）の印が、基準画像の位置から、少しずれて描かれたとき（kurochiwa: 目のすぐ下のチークが、15 画素 高く、下まぶたに重なった）。
+    # 描かせた頭（36）の印が、基準画像の位置から、少しずれて描かれたとき（開発中のキャラ kurochiwa: 目のすぐ下のチークが、15 画素 高く、下まぶたに重なった）。
     # 印の重心を、基準画像（01_base_nohair）と、モデルの頭のレイヤーで測って、差を書く。跡を埋めるのは、もとの場所
     sh_all_ = EM_.get("shift") or []
     for bi_, bx_ in enumerate(EM_["boxes"]):

@@ -233,7 +233,7 @@
   0.42
  ],
  "extras": {
-  "_comment": "61〜68 は、キーの形のシート（目 2 種・口 2 種 × 2 案。WORKFLOW.md の段階 5c）。box は kurage02 の値なので、必ず置き直す（目 = _eyec_ref.json の box、口 = 鼻の下〜あご先を横 3:縦 2 で囲む範囲。01_base_nohair の 3 倍の絵の画素）。\"sheet\": true は、キーの形のシートの目印（PY place を番号なしで走らせたとき、シートは置かない）。揺れ物は、jobs・layers・physics に足す（体の飾りの下に敷く体を描かせるときは、jobs と layers の両方に書く。WORKFLOW.md の段階 6b）",
+  "_comment": "61〜68 は、キーの形のシート（目 2 種・口 2 種 × 2 案。WORKFLOW.md の段階 5c）。box は、このキャラで置き直した値（目 = _eyec_ref.json の box、口 = 鼻の下〜あご先を横 3:縦 2 で囲む範囲。01_base_nohair の 3 倍の絵の画素）。\"sheet\": true は、キーの形のシートの目印（PY place を番号なしで走らせたとき、シートは置かない）。揺れ物は、jobs・layers・physics に足す（体の飾りの下に敷く体を描かせるときは、jobs と layers の両方に書く。WORKFLOW.md の段階 6b）",
   "jobs": {
    "61": {
     "out": "61_key_eye1",

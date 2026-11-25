@@ -13,7 +13,7 @@ prompts/（このフォルダには無い。chars/<キャラ名>/prompts/ を作
     頭の上の、動物の耳（ケモ耳）の手本は、このフォルダの prompt_example_kemomimi.txt（WORKFLOW.md の「揺れ物」の章の「ケモ耳」）。
 
 中身は、今の作り方（kurage02 と同じ。目と口はキーの形、向きの上限は広く）の値:
-  - tune: 向きの上限 30・16・28・25、lash・browBounce・faceFit・mouthFit・eyeFit・headTilt が 1
+  - tune: 向きの上限 30・16・28・25、lash・browBounce・faceFit・mouthFit・eyeFit・headTilt・faceDown が 1
   - params.browShow、browAmp、lashOver 0、lidShadow
   - extras.jobs の 61〜68（キーの形のシート。範囲 box は kurage02 の値なので、段階 5c で必ず置き直す）
   - hair（box・whorl・center_x などは kurage02 の値。back の box は段階 2、ほかは段階 5b で置き直す）

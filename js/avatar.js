@@ -2,6 +2,8 @@
 // models/<名前>/model.json と models/<名前>/parts/*.png を読み（partsgen/tools/pipeline.py が書き出す）、
 // レイヤー 1 枚ごとに格子メッシュを張って、毎フレーム頂点を動かして描く。
 // 座標は、横 3000 の絵の座標（顔の中心 x=1500、頭頂 y=111、あご先 y=1167。build2.py が、どのキャラもこの位置に合わせる）。
+// コメントの中の「目安」「ねらい」は、この動きを作るときに、動かして見ながら決めた、ねらいの値。
+// 「PSD」は、この仕組みを作り始めたときの、人が手でパーツ分けした絵のモデル（このリポジトリには入っていない。レイヤーの名前と座標は、そこから来ている）。
 //
 //   顔の向き : 頭の立体（疑似奥行き）に沿って各パーツをずらす。目・眉・口は歪ませず、
 //              その場所での「ずれ・縮み・傾き」だけを掛ける
@@ -96,7 +98,7 @@ const TUNE = [
   { key: 'fluff', label: '毛束のふわふわ', min: 0, max: 2.5, def: 1 },
   { key: 'exprLive', label: '表情の切り替わりのはずみ', min: 0, max: 2, def: 1 },  // 目 → まゆ → 口角の順に、少し行きすぎてから落ち着く
   { key: 'link', label: 'まゆ・下まぶたの連動', min: 0, max: 2, def: 1 },          // 視線・まばたき・口に、まゆと下まぶたがついて動く
-  // まゆが、目の開きについて「はずんで」動く（見本: 目を閉じると下がり、見開くと上がる。ばねで行きすぎて戻る）。0 で前と同じ（遅れずについていくだけ）
+  // まゆが、目の開きについて「はずんで」動く（ねらい: 目を閉じると下がり、見開くと上がる。ばねで行きすぎて戻る）。0 で前と同じ（遅れずについていくだけ）
   { key: 'browBounce', label: 'まゆのはずみ（目の開きについて）', min: 0, max: 2, def: 0 },
   { key: 'bodyMove', label: '体の動き（呼吸・遅れ・ひねり）', min: 0, max: 2, def: 1 },
   { key: 'lash', label: 'まつげの張り出し（横向きで、奥の目尻のまつげが輪郭の外へ出る）', min: 0, max: 1.5, def: 0 },   // 0 で無し（まつげも目と一緒に縮む）
@@ -434,7 +436,7 @@ const PITCH = { top: q.has('pTop') ? +q.get('pTop') : 0.0, upK: q.has('pUpK') ? 
 // 目より、あごと口が先へ出て、あごのしゃくれた顔に見える。
 // ねらい（目安の値）: あご先に対する両目の中点は、真横で 0、下を向くと +0.20E 先へ（E = 両目の間隔）、上を向くと −0.12E。
 // 頭を、先に上下へ回してから左右へ回す（頭を立体として回す）と、高さ y の点は、奥行きが (y − 支点)·sinP だけ変わり、横へ (y − 支点)·sinP·sinY ずれる。
-// 支点は、あご先（見本でも、あご先は、上下を向いても、ほぼ動かない。首とのつなぎ目も変わらない）。強さ TILT_K は、見本の大きさに合わせた（剛体の 0.6 倍）
+// 支点は、あご先（あご先は、上下を向いても、ほぼ動かさない。首とのつなぎ目も変わらない）。強さ TILT_K は、目安の大きさに合わせた（剛体の 0.6 倍）
 const TILT_K = q.has('tiltK') ? +q.get('tiltK') : 0.6, TILT_Y0 = FACE_TOP + FACE_H - 1;
 let tiltT = 0;                           // 今の姿勢の傾き（高さ 1 あたりの、横のずれ）。毎フレーム、姿勢と一緒に決める
 const sm = [0, 0];
@@ -536,7 +538,7 @@ function makeGroup(ax, ay, z, zx, zPitch, opt) {
   g.update = () => {
     if (typeof z === 'number') {
       rotMap(ax, ay, z * tune.depth, g.p);
-      // 余分なずれは左右だけ（上下の動きは変えない）。口は、tune.mouthFit で、見本の位置（opt.leadFit）へ寄せる
+      // 余分なずれは左右だけ（上下の動きは変えない）。口は、tune.mouthFit で、目安の位置（opt.leadFit）へ寄せる
       if (opt && opt.lead) g.p[0] += z * tune.depth * (typeof opt.leadFit === 'number' ? lerp(opt.lead, opt.leadFit, clamp(tune.mouthFit, 0, 1)) : opt.lead) * tune.solid * pose.sinY;
       if (opt && opt.xz && tune.eyeFit > 0) g.p[0] += opt.xz * tune.eyeFit * tune.depth * pose.sinY;   // 目と眉を、あご先に合わせて、左右にだけ余分に動かす
     }
@@ -591,7 +593,7 @@ function makeEye(c) {
       const ys = bs ? bs.y + bs.h * (0.95 - 0.8 * arch) : base + H * (0.28 - 0.26 * arch);
       return lerp(yc, ys, smile);
     }
-    return base + H * lerp(0.30 + 0.10 * arch,    // 閉じ目: 下まぶたの近くで浅くたるむ弧（∪）。見本の位置に合わせた
+    return base + H * lerp(0.30 + 0.10 * arch,    // 閉じ目: 下まぶたの近くで浅くたるむ弧（∪）。目安の位置に合わせた
       0.28 - 0.26 * arch, smile);                 // 笑い目: 上へふくらむ弧（∩）
   };
   for (let i = 0; i < n; i++) { const u = (i / (n - 1)) * 2 - 1; e.Cc[i] = closedY(u, 0); e.Cs[i] = closedY(u, 1); }
@@ -641,7 +643,7 @@ function makeEye(c) {
     e.lowOpen = o1;
     e.close = 1 - Math.min(open, 1);
     // 清書した閉じ目（閉じ目R/L・笑い目R/L）があるモデルは、閉じきる直前に、開いた目のパーツをそれと入れ替える。
-    // 開いた目のまつげを変形するだけでは、目頭へ下がる長いまつげが塊になり、はねが太いまま残る（見本のような 1 本の帯にならない）
+    // 開いた目のまつげを変形するだけでは、目頭へ下がる長いまつげが塊になり、はねが太いまま残る（ねらいの、1 本の帯にならない）
     e.cb = e.hasClosed ? 1 - sstep(0.04, 0.12, open) : 0;
     // 差分シートの途中のコマ（目コマ2〜4。開きの 7 割・半分・2 割の絵）があるモデルは、まばたきを、アニメの目パチのように、
     // 描かれた絵を順に見せて作る（開いた目 → コマ 2 → 3 → 4 → 閉じた目）。となりの絵へは、短く重ねて切り替える
@@ -2055,7 +2057,7 @@ function addPart(L) {
   // まつげを、髪の上にも重ねる（キーの形の目だけ。model.json の lashOver）
   const lashOver = q.has('lashOver') ? +q.get('lashOver') : model.lashOver;   // ?lashOver= で試せる
   if (lashOver > 0) for (const k of ['R', 'L']) if (eyes[k].ke) draws.push({ keyEye: k, over: lashOver });
-  // 眉は髪の上にも重ねて描ける（怒り・蔑むの見本と同じ見え方）
+  // 眉は髪の上にも重ねて描ける（怒り・蔑むで、眉の角度が、髪に隠れずに見えるように）
   for (const p of browParts) draws.push({ p, alpha: () => F.browShow * 0.92, tint: Array.isArray(model.browTint) ? model.browTint : null });
 }
 const pFace = parts.find((p) => p.L.name === '輪郭ベース');
