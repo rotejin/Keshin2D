@@ -45,8 +45,11 @@ def hsv_of(bgr8):
 
 
 def skinlike_mask(bgr):
+    # 「明るい肌らしい色」。目・眉・鼻・口を、肌から分けるのに使う。
+    # char.json の skin_rmin（書かなければ 238 = 前と同じ）: 肌と見なす赤の下限。血色の薄い、白い肌（例 228,207,211）は、赤が 238 に届かず、
+    # 顔の全部が「肌でない所」になる。肌のいちばん暗い所（ほほ・目の下）より 10 ほど小さく、線（口・下まぶた・二重。例 199〜205）より大きい値を書く（例 215）
     B, G, R = bgr[..., 0], bgr[..., 1], bgr[..., 2]
-    return (R > 238) & (G > 170) & (G < 240) & (B > 180) & (B < 243) & (R - G > CHAR.get('skin_rg_min', 14))
+    return (R > CHAR.get('skin_rmin', 238)) & (G > 170) & (G < 240) & (B > 180) & (B < 243) & (R - G > CHAR.get('skin_rg_min', 14))
 
 
 def skin_estimate(roi8, feat, k=4, rad=9):

@@ -23,7 +23,7 @@ def largest_(m):
     return (lab == 1 + np.argmax(st[1:, cv2.CC_STAT_AREA])) if n > 1 else m.astype(bool)
 
 
-def process_eye(roi8, excl, hue=tuple(CHAR.get('iris_hue', (268, 336)))):
+def process_eye(roi8, excl, hue=tuple(CHAR.get('iris_hue', (268, 336))), circle0=None):
     """roi8: BGR。目尻が左・目頭が右の向き（画面左の目）で渡す。"""
     h, w = roi8.shape[:2]
     roi = roi8.astype(np.float32)
@@ -39,36 +39,49 @@ def process_eye(roi8, excl, hue=tuple(CHAR.get('iris_hue', (268, 336)))):
     skin = skin_estimate(roi8, coarse)
     skin = np.where(excl[..., None], roi, skin)
     dark = V < 0.45
-    red = ((H < 20) | (H > 335)) & (Sa > 0.45) & (V < 0.93)
+    # char.json の eye_line_smin（書かなければ 0.45 = 前と同じ）: 下まぶた・目尻の線（赤みのある線）と見なす、彩度の下限。
+    # 線が、彩度の低い、ピンクがかった灰色（例 176,142,150 = 彩度 0.19）の絵柄は、線が「赤い線」に入らず、目の開きの下のふちと、目尻・目頭の端が取れない。
+    # 線の彩度より小さく、肌の彩度（例 0.09）より大きい値を書く（例 0.15）
+    red = ((H < 20) | (H > 335)) & (Sa > CHAR.get('eye_line_smin', 0.45)) & (V < 0.93)
     core = cv2.morphologyEx(((dark | red) & ~excl & (coarse > 0)).astype(np.uint8), cv2.MORPH_OPEN, ell(3)) > 0
     whitelike = (Sa < 0.22) & (V > 0.6)
-    # --- 瞳: 色で候補 → 白目との境目で円を合わせる
-    cand = ((H > hue[0]) & (H < hue[1]) & (Sa > 0.2) & (V > CHAR.get('iris_vmin', 0.35)) & (coarse > 0) & ~excl).astype(np.uint8)
-    cand = cv2.morphologyEx(cand, cv2.MORPH_OPEN, ell(7))
-    n, lab, st, _ = cv2.connectedComponentsWithStats(cand)
-    cand = (lab == 1 + np.argmax(st[1:, cv2.CC_STAT_AREA])).astype(np.uint8)
-    cnts = cv2.findContours(cand, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)[0]
-    pts = max(cnts, key=cv2.contourArea)[:, 0, :].astype(np.float64)
-    r0 = (pts[:, 0].max() - pts[:, 0].min()) / 2
-    cx = (pts[:, 0].max() + pts[:, 0].min()) / 2
-    cy = pts[:, 1].max() - r0
-    bp = []
-    for ang in np.deg2rad(np.arange(0, 360, 2)):
-        for rr in np.arange(r0 - 12, r0 + 24, 0.5):
-            x = int(round(cx + rr * np.cos(ang)))
-            y = int(round(cy + rr * np.sin(ang)))
-            x2 = int(round(cx + (rr + 2) * np.cos(ang)))
-            y2 = int(round(cy + (rr + 2) * np.sin(ang)))
-            if not (0 <= x2 < w and 0 <= y2 < h and 0 <= x < w and 0 <= y < h):
-                break
-            if whitelike[y, x] and whitelike[y2, x2]:
-                bp.append((cx + rr * np.cos(ang), cy + rr * np.sin(ang), rr))
-                break
-    bp = np.array(bp)
-    bp = bp[np.abs(bp[:, 2] - np.median(bp[:, 2])) < 6]
-    cx, cy, r = fit_circle(bp[:, :2])
-    r += 1.5
-    info = dict(iris_circle=[float(cx), float(cy), float(r)], iris_edge_points=int(len(bp)))
+    if circle0 is not None:
+        # char.json の iris_circle（書かなければ、色で探す = 前と同じ）: {"L": [cx, cy, r], "R": [cx, cy, r]}。瞳の円を、拡大図（grid.py）から読んで、直接置く。
+        # 座標は、目の箱と同じ（3 倍の絵の画素。R は、左右を返した絵の座標）。
+        # 瞳の候補は「色相の範囲 + 彩度 0.2 超え」で探すので、色味のない灰色の瞳（彩度 0.1 以下）は、見つからない。
+        # 灰色の瞳を「彩度が低く、白目より暗く、まつげより明るい所」で探すやり方は、白目の影の所が、いちばん大きい塊になって、外れた（試して、やめた）。
+        # 円は、見えている左右のふちと、下のふちに合わせる（瞳孔の位置ではない。まぶたが下りた目は、瞳孔が、円のまん中より下に描かれる）
+        cx, cy, r = [float(v_) for v_ in circle0]
+        cand = (((xx - cx) ** 2 + (yy - cy) ** 2 <= r * r) & (coarse > 0) & ~excl).astype(np.uint8)      # 目の開きを求める bounds_simple が使う
+        info = dict(iris_circle=[cx, cy, r], iris_edge_points=0)
+    else:
+        # --- 瞳: 色で候補 → 白目との境目で円を合わせる
+        cand = ((H > hue[0]) & (H < hue[1]) & (Sa > 0.2) & (V > CHAR.get('iris_vmin', 0.35)) & (coarse > 0) & ~excl).astype(np.uint8)
+        cand = cv2.morphologyEx(cand, cv2.MORPH_OPEN, ell(7))
+        n, lab, st, _ = cv2.connectedComponentsWithStats(cand)
+        cand = (lab == 1 + np.argmax(st[1:, cv2.CC_STAT_AREA])).astype(np.uint8)
+        cnts = cv2.findContours(cand, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)[0]
+        pts = max(cnts, key=cv2.contourArea)[:, 0, :].astype(np.float64)
+        r0 = (pts[:, 0].max() - pts[:, 0].min()) / 2
+        cx = (pts[:, 0].max() + pts[:, 0].min()) / 2
+        cy = pts[:, 1].max() - r0
+        bp = []
+        for ang in np.deg2rad(np.arange(0, 360, 2)):
+            for rr in np.arange(r0 - 12, r0 + 24, 0.5):
+                x = int(round(cx + rr * np.cos(ang)))
+                y = int(round(cy + rr * np.sin(ang)))
+                x2 = int(round(cx + (rr + 2) * np.cos(ang)))
+                y2 = int(round(cy + (rr + 2) * np.sin(ang)))
+                if not (0 <= x2 < w and 0 <= y2 < h and 0 <= x < w and 0 <= y < h):
+                    break
+                if whitelike[y, x] and whitelike[y2, x2]:
+                    bp.append((cx + rr * np.cos(ang), cy + rr * np.sin(ang), rr))
+                    break
+        bp = np.array(bp)
+        bp = bp[np.abs(bp[:, 2] - np.median(bp[:, 2])) < 6]
+        cx, cy, r = fit_circle(bp[:, :2])
+        r += 1.5
+        info = dict(iris_circle=[float(cx), float(cy), float(r)], iris_edge_points=int(len(bp)))
     circ = (xx - cx) ** 2 + (yy - cy) ** 2 <= r * r
     Vl = V.copy()
     # 瞳に濃い色のふち・瞳孔の線があるキャラ: その濃い画素を「線」にしない（線にすると、視線を動かしたとき取り残される）
@@ -347,7 +360,8 @@ if __name__ == "__main__":
         m = np.zeros(excl.shape, np.uint8)
         cv2.fillPoly(m, [np.array(pl, np.int32)], 1)
         excl |= m > 0
-    L, info = process_eye(roi8, excl)
+    ic_ = (CHAR.get('iris_circle') or {}).get(side)
+    L, info = process_eye(roi8, excl, circle0=[ic_[0] - X0, ic_[1] - Y0, ic_[2]] if ic_ else None)
     roi = roi8.astype(np.float32)
     d_ = info.pop('_dbg')
     cv2.imwrite(outdir + '/eye%s_dbg.png' % side, cv2.resize(d_[:, d_.shape[1] // 2:], None, fx=2.5, fy=2.5, interpolation=cv2.INTER_NEAREST))   # 白=目の開き 桃=瞳 赤=線 水色=白目の確かな所

@@ -8,6 +8,8 @@
   "段階 2（HD key の前）: hair.back の box（00_base の 3 倍の絵で、頭のまわりの全体 = 後ろ髪の全体が入り、余白が 1 割ほどの範囲。横 3:縦 2）。入っているのは kurage02 の値。grid.py で 00_base_3x.png を見て置く",
   "段階 2（HD key の前）の hair.back の box は、髪が絵の幅いっぱい・上の端まであるキャラでは、絵からはみ出してよい（負の値・絵の幅より大きい値。外は背景色で埋まる）",
   "段階 4: iris_hue・eyeL・eyeR・build・ear_ymax・tone_rg_min ほか色の条件（probe.py で測って、WORKFLOW.md の「キャラごとに置き直す値」の 2 つの表で決める）。肌の影（首・耳）の B が 130 以下なら tone_bmin（例 95）。白目がクリーム色なら skin_rg_min を上げ、eye_open_simple を {\"white_smax\": 0.19} のように書く。瞳が橙〜琥珀色で肌の彩度が高いときは、iris_hue に肌の色相（20〜25）を入れない",
+  "段階 4（血色の薄い白い肌・灰色の瞳のキャラ）: 肌の R が 238 に届かなければ skin_rmin（例 215。skin_rg_min も肌の R−G の少し下に）、首の影・耳の中の R が 200 に届かなければ tone_rmin（例 165）、下まぶたの線が彩度の低いピンクがかった灰色なら eye_line_smin（例 0.15）。瞳が灰色・白・黒（彩度が 0.2 に届かない）なら、瞳の円を grid.py の 5 倍の拡大図から読んで iris_circle {\"L\": [cx, cy, r], \"R\": [cx, cy, r]}（目の箱と同じ座標。R は左右を返した座標。見えている左右のふちと下のふちに合う円）",
+  "段階 2・6（帽子 12・髪飾り 13 が、基準画像からずれて描かれたとき）: hat_shift・ornament_shift [dx, dy]（3 倍の絵の画素。その飾りだけにある色の面の重心を、基準画像と比べて測る。形と大きさが合っているときだけ）",
   "段階 5（26 を描かせる前）: 目尻のはねが長く、片目のまわりの見本（_eyec_ref.png）に、もう片方の目が写るときは eyec_ref_shift [dx, dy]（例 [-73, 10]）・eyec_ref_scale（既定 1.25）",
   "段階 5c: extras.jobs の 61〜68 の ref.box（目 = _eyec_ref.json の box と同じ値。口 = 鼻の下〜あご先を横 3:縦 2 で囲む範囲。入っているのは kurage02 の値）。指示文は、共通の物（partsgen/tools/codex の key_eye1・key_eye2・sheet_mouth・key_mouth2）が自動で使われる（写さなくてよい。キャラ特有の事情を書き足すときだけ prompts/prompt_61〜68.txt へ写す）",
   "段階 5b: hair の center_x・head_r・bangs_tip_y、front の box・whorl、front と back の kind・parts（top_cut は帽子の無いキャラで 0.45〜0.55）",

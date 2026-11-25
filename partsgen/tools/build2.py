@@ -741,7 +741,7 @@ if os.environ.get("NECKDOWN"):
     D_a[D_a < 0.03] = 0
     db, dg, dr = D_rgb[..., 0], D_rgb[..., 1], D_rgb[..., 2]
     # 服が白〜クリーム色のキャラは、赤と緑の差の下限を上げる（tone_rg_min）。肌の影が、青の少ない濃い色のキャラは、青の下限を下げる（tone_bmin。build.py と同じ項目）
-    toneD = (dr > 200) & (dg > 125) & (db > CHAR.get('tone_bmin', 130)) & (dr - dg > CHAR.get('tone_rg_min', 8)) & (D_a > 0.9)
+    toneD = (dr > CHAR.get('tone_rmin', 200)) & (dg > 125) & (db > CHAR.get('tone_bmin', 130)) & (dr - dg > CHAR.get('tone_rg_min', 8)) & (D_a > 0.9)      # tone_rmin: 肌の影が、赤の少ない色のキャラ（build.py と同じ項目）
     old_a = L["40_neck"][1]
     oy_, ox_ = np.where(old_a > 0.5)
     lab_n, lab_ = cv2.connectedComponents(toneD.astype(np.uint8))
@@ -940,6 +940,13 @@ for env_, nm_, path_ in (("HAT", "帽子", "頭/帽子"), ("ORNAMENT", "髪飾�
     if os.environ.get(env_):
         r_, a_ = load(os.environ[env_])
         a_[a_ < 0.03] = 0
+        # 描かれた位置が、基準画像とずれたときの直し（char.json の hat_shift・ornament_shift。[x, y]、3 倍の絵での画素。書かなければ、しない = 前と同じ）。
+        # 「基準と同じ場所に」と頼んでも、小さな飾りだけの絵は、ずれて描かれることがある（形と大きさは合っていて、位置だけ 40 画素以上 下、など）。
+        # 基準画像の飾りと、描かせた絵の飾りの、同じ色の面の重心を、3 倍の絵で測って、その差を書く（描き直しを重ねない）
+        sh_ = CHAR.get(env_.lower() + "_shift")
+        if sh_:
+            Mt = np.float32([[1, 0, sh_[0]], [0, 1, sh_[1]]])
+            r_, a_ = cv2.warpAffine(r_, Mt, (Ww, Hh)), cv2.warpAffine(a_, Mt, (Ww, Hh))
         spec.append((nm_, path_, (r_, a_), False))
 
 # ---------- 前髪の影（前髪の形を少し下へずらして、肌に落ちる影にする）
