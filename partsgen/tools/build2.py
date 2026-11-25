@@ -288,6 +288,17 @@ if KEY_DIR and os.path.isfile(os.path.join(KEY_DIR, "eye.json")) and os.path.isf
         if not os.path.isfile(fp_):
             continue
         v_ = imread_rgba(fp_)
+        if nm_ == "crease" and CHAR.get("key_eye_crease_tint"):
+            # char.json の key_eye_crease_tint: [R, G, B]（書かなければ、しない = 前と同じ）。二重の線の、赤い所の色を、この色にする（不透明度は、そのまま）。
+            # 目のシートの二重の線が、基準画像の線（淡いピンク）より、赤く濃く描かれたときに使う（kurochiwa: シート 232,48,59・基準 245,171,169。
+            # 目の上に、赤い線が 1 本、はっきり見えた）。色は、probe.py で、基準画像（01_base_nohair）の二重の線を測って書く。
+            # 線の、目頭の側の濃い所（こげ茶・黒）は、変えない: 赤み（R − B）が 40 より大きい画素から寄せはじめ、120 以上で、その色にする
+            tc_ = np.array([float(t_) for t_ in CHAR["key_eye_crease_tint"]][::-1], np.float32)      # 絵は BGR の順
+            c_ = v_[..., :3].astype(np.float32)
+            wr_ = np.clip((c_[..., 2] - c_[..., 0] - 40.0) / 80.0, 0, 1)[..., None]
+            v_ = v_.copy()
+            v_[..., :3] = np.clip(c_ * (1 - wr_) + tc_ * wr_, 0, 255).astype(v_.dtype)
+            print("key_eye_crease_tint: 二重の線の赤い所（%d 画素）を、RGB %s に" % (int(((wr_[..., 0] > 0.5) & (v_[..., 3] > 127)).sum()), [int(t_) for t_ in CHAR["key_eye_crease_tint"]]))
         pm_ = _premult(v_[..., :3].astype(np.float32), v_[..., 3].astype(np.float32) / 255)
         KEY_EYE_IMG[nm_] = {"L": _place(pm_, kwS_, khS_, kxL_, kyL_ + KDY_),
                             "R": _place(pm_[:, ::-1], kwS_, khS_, kxR_, kyL_ + dyR_ + KDY_)}
@@ -437,7 +448,11 @@ if EM_.get("boxes"):
     hr_ = hr_.copy()
     mk_r_, mk_a_ = np.zeros_like(hr_), np.zeros((Hh, Ww), np.float32)
     thr_, mg_ = float(EM_.get("thr", 14)), 16
-    for bx_ in EM_["boxes"]:
+    # "shift": [[dx, dy], …]（範囲ごと。3 倍の絵の画素。書かなければ、ずらさない = 前と同じ）: 分けた印を、このぶん動かして置く。
+    # 描かせた頭（36）の印が、基準画像の位置から、少しずれて描かれたとき（kurochiwa: 目のすぐ下のチークが、15 画素 高く、下まぶたに重なった）。
+    # 印の重心を、基準画像（01_base_nohair）と、モデルの頭のレイヤーで測って、差を書く。跡を埋めるのは、もとの場所
+    sh_all_ = EM_.get("shift") or []
+    for bi_, bx_ in enumerate(EM_["boxes"]):
         x0_, y0_, x1_, y1_ = [int(round(float(t_))) for t_ in bx_]
         X0_, Y0_, X1_, Y1_ = max(x0_ - mg_, 0), max(y0_ - mg_, 0), min(x1_ + mg_, Ww), min(y1_ + mg_, Hh)      # 埋めるときに使う、まわりの肌
         reg_, ra_ = hr_[Y0_:Y1_, X0_:X1_].copy(), ha_[Y0_:Y1_, X0_:X1_]
@@ -467,8 +482,21 @@ if EM_.get("boxes"):
         err_ = float(np.abs(al_[..., None] * col_ + (1 - al_[..., None]) * fill_ - reg_)[mm_].max())
         n_ = cv2.connectedComponents((al_ > 0.5).astype(np.uint8))[0] - 1
         hr_[Y0_:Y1_, X0_:X1_] = np.where(mm_[..., None], fill_, reg_)
-        mk_r_[Y0_:Y1_, X0_:X1_] = np.where(mm_[..., None], col_, mk_r_[Y0_:Y1_, X0_:X1_])
-        mk_a_[Y0_:Y1_, X0_:X1_] = np.maximum(mk_a_[Y0_:Y1_, X0_:X1_], al_ * ra_)
+        sh_ = sh_all_[bi_] if bi_ < len(sh_all_) and sh_all_[bi_] else None
+        dxs_, dys_ = (int(round(float(sh_[0]))), int(round(float(sh_[1])))) if sh_ else (0, 0)
+        if dxs_ or dys_:
+            # ずらして置く: 行き先が、絵の外へ出るぶんは、切る
+            tx0_, ty0_ = X0_ + dxs_, Y0_ + dys_
+            cx0_, cy0_ = max(tx0_, 0), max(ty0_, 0)
+            cx1_, cy1_ = min(tx0_ + (X1_ - X0_), Ww), min(ty0_ + (Y1_ - Y0_), Hh)
+            sx0_, sy0_ = cx0_ - tx0_, cy0_ - ty0_
+            sub_m_ = mm_[sy0_:sy0_ + cy1_ - cy0_, sx0_:sx0_ + cx1_ - cx0_]
+            mk_r_[cy0_:cy1_, cx0_:cx1_] = np.where(sub_m_[..., None], col_[sy0_:sy0_ + cy1_ - cy0_, sx0_:sx0_ + cx1_ - cx0_], mk_r_[cy0_:cy1_, cx0_:cx1_])
+            mk_a_[cy0_:cy1_, cx0_:cx1_] = np.maximum(mk_a_[cy0_:cy1_, cx0_:cx1_], (al_ * ra_)[sy0_:sy0_ + cy1_ - cy0_, sx0_:sx0_ + cx1_ - cx0_])
+            print("eye_marks: 範囲 %s の印を、%+d,%+d ずらして置きました" % (bx_, dxs_, dys_))
+        else:
+            mk_r_[Y0_:Y1_, X0_:X1_] = np.where(mm_[..., None], col_, mk_r_[Y0_:Y1_, X0_:X1_])
+            mk_a_[Y0_:Y1_, X0_:X1_] = np.maximum(mk_a_[Y0_:Y1_, X0_:X1_], al_ * ra_)
         print("eye_marks: 範囲 %s から、印 %d 個（%d 画素。芯の色 BGR %d,%d,%d）を分けました。重ね直した絵と、もとの頭の差は、最大 %.1f"
               % (bx_, n_, int((al_ > 0.5).sum()), lc_[0], lc_[1], lc_[2], err_))
     if mk_a_.max() > 0.5:

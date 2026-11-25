@@ -19,7 +19,8 @@
   "tone_mask": tone_ref のうち、髪のある所を示す絵（省略で tone_ref の全体。tone_ref を 00_base にするときに、髪だけの絵を書く）,
   "parts": {
     "front": {"design": デザインの絵, "box": [x0,y0,x1,y1]（デザインの絵が、3 倍の絵のどの範囲か）, "srcs": [描かせた絵...],
-              "whorl": [x,y]（つむじ。デザインの絵の座標。省略で、外形のてっぺん）, "base": true},
+              "whorl": [x,y]（つむじ。デザインの絵の座標。省略で、外形のてっぺん）, "base": true,
+              "lock_scale": false（房ごとの位置合わせで、倍率を変えず、ずれだけを直す。省略で、倍率も探す）},
     "back":  {"design": ..., "box": ..., "srcs": [...], "cap": 後頭部の絵}
   },
   "bangs_tip_y": 前髪と横髪を分ける高さ（3 倍の絵の y。毛先がこれより上なら前髪）,
@@ -67,8 +68,9 @@ def warp_rgba(img, M, size, flags=cv2.INTER_LINEAR):
     return o
 
 
-def align(S, D, name):
-    """描かせた絵は、全体が数画素ずれたり、わずかに大きさが違ったりする。デザインの外形と輪郭線にいちばん合う、ずれと倍率を探す（半分の大きさで探す）"""
+def align(S, D, name, scale=True):
+    """描かせた絵は、全体が数画素ずれたり、わずかに大きさが違ったりする。デザインの外形と輪郭線にいちばん合う、ずれと倍率を探す（半分の大きさで探す）
+    scale=False: 倍率は変えず、ずれだけを、1 画素きざみで探す（房ごとの位置合わせ用。hair.<部分>.lock_scale: false）"""
     H, W = D.shape[:2]
     h, w = H // 2, W // 2
     Da = cv2.resize((D[..., 3] > 128).astype(np.float32), (w, h), interpolation=cv2.INTER_AREA)
@@ -86,6 +88,13 @@ def align(S, D, name):
         return (2.0 * same.sum() / max(a2.sum(), 1) + (a2 * Da).sum() / max(a2.sum(), 1) + 0.5 * (l2 * Dl).sum() / max(l2.sum(), 1)
                 - 0.002 * (abs(dx) + abs(dy)) - 0.5 * abs(sc - 1))          # 大きなずれ・倍率の違いは、少しだけ不利にする
 
+    if not scale:
+        # 細い房・小さい房は、合わせる手がかりが少なく、わずかな点数の差で、倍率が 1.5〜4.5% 動く（kurochiwa: 前髪の細い房が 0.963 倍に縮み、
+        # 水平にそろえた前髪の線から、毛先が 1 本だけ短くなった。描かれた絵は、デザインと同じ高さだった）。絵の全体の倍率は、もう合わせてあるので、
+        # 房ごとには、ずれだけを直す
+        v, dx, dy = max(((score(1.0, x2, y2), x2, y2) for x2 in range(-9, 10) for y2 in range(-9, 10)))
+        print('  align %-14s scale 1.000 shift %+d,%+d (score %.3f)  倍率は変えない' % (name, dx * 2, dy * 2, v))
+        return 1.0, float(dx * 2), float(dy * 2)
     best = max(((score(sc, dx, dy), sc, dx, dy) for sc in np.arange(0.94, 1.0301, 0.015) for dx in range(-18, 19, 3) for dy in range(-18, 19, 3)))
     _, sc, dx, dy = best
     if abs(dx) >= 18 or abs(dy) >= 18 or sc < 0.941 or sc > 1.029:
@@ -263,6 +272,7 @@ def main():
         if SRC_POLYS:
             # 房ごとの位置合わせ（parts_full のとき）: 絵の全体のずれを直したあと、房 1 つずつ、そのまわりだけで、デザインといちばん合う ずれと倍率を探す。
             # 1 枚の絵の中でも、房ごとに、描かれた位置が 20〜30 画素ちがう（kurage02: 前髪の左の房だけ短く描かれ、まん中の房が 1 つだけ長く見えた）
+            # hair.<部分>.lock_scale: false（書かなければ、倍率も探す = 前と同じ）: 房ごとには、倍率を変えず、ずれだけを直す
             for li, l in enumerate(locks):
                 my, mx = np.where(l['m'])
                 if len(mx) < 400:
@@ -271,7 +281,7 @@ def main():
                 bx0, bx1 = max(int(mx.min()) - pad, 0), min(int(mx.max()) + pad + 1, W)
                 by0, by1 = max(int(my.min()) - pad, 0), min(int(my.max()) + pad + 1, H)
                 bx1 -= (bx1 - bx0) % 2; by1 -= (by1 - by0) % 2
-                sc_, dx_, dy_ = align(l['img'][by0:by1, bx0:bx1], D[by0:by1, bx0:bx1], '房 x %d' % mx.mean())
+                sc_, dx_, dy_ = align(l['img'][by0:by1, bx0:bx1], D[by0:by1, bx0:bx1], '房 x %d' % mx.mean(), scale=pc.get('lock_scale', True) is not False)
                 if abs(sc_ - 1) < 1e-6 and dx_ == 0 and dy_ == 0:
                     continue
                 ccx, ccy = bx0 + (bx1 - bx0) / 2.0, by0 + (by1 - by0) / 2.0

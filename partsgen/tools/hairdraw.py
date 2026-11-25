@@ -375,7 +375,7 @@ def locks(c):
             continue
         srcs = sorted(glob.glob(c.src(part + '_in_*'))) + sorted(glob.glob(c.src(part + '_gap*')))
         pc = {'design': c.src('design_' + part), 'box': h[part]['box'], 'srcs': srcs}
-        for k in ('whorl', 'base', 'base_cut', 'under', 'under_open', 'under_dark', 'widen', 'widen_side', 'adjust', 'close_gaps', 'top_cut', 'under_shrink', 'clump_close', 'fit_tip', 'fit_tip_min'):
+        for k in ('whorl', 'base', 'base_cut', 'under', 'under_open', 'under_dark', 'widen', 'widen_side', 'adjust', 'close_gaps', 'top_cut', 'under_shrink', 'clump_close', 'fit_tip', 'fit_tip_min', 'lock_scale'):
             if k in h[part]:
                 pc[k] = h[part][k]
         if h[part].get('parts'):
