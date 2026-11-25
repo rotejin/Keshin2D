@@ -315,11 +315,13 @@ def draw(o):
         eye_ref(o)
     if any(JOBS[n][1].get("eye") == "_eyec_ref" for n in ns):
         eyec_ref(o)
-    if any(JOBS[n][1].get("brow") for n in ns):
+    # 見本の名前（brow・ear・head）ではなく、見本の絵（_brow_ref・_ear_ref・_head_ref）で見る。追加の絵（extras.jobs）の見本に "name": "ear" と書いたとき、
+    # 人の耳の見本（face/11_ears.png が要る）まで作ろうとして、止まった（犬の耳を描かせる絵。人の耳の無いキャラ）
+    if any(JOBS[n][1].get("brow") == "_brow_ref" for n in ns):
         brow_ref(o)
-    if any(JOBS[n][1].get("ear") for n in ns):
+    if any(JOBS[n][1].get("ear") == "_ear_ref" for n in ns):
         ear_ref(o)
-    if any(JOBS[n][1].get("head") for n in ns):
+    if any(JOBS[n][1].get("head") == "_head_ref" for n in ns):
         head_ref(o)
     for n in ns:
         if n in o.extra:

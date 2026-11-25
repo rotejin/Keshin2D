@@ -52,6 +52,16 @@
          （厚塗り）では、下まぶたの影・目尻の影が、線と同じくらい暗く、しきい値で切ると、影のふちが、角ばった枠・ちぎれた帯として絵に入る
          （--red-margin を動かしても、まわりとの差で線だけを取っても、きれいに取れなかった）。線は、はっきり、影は、なだらかに薄れる絵になる。
          白目と、まつげの帯（そのふちの 2 画素）は、入れない。--lower-rim と一緒に使う（白目のすぐ下の線は、--lower-rim が入れる）
+  --lash-rb <差>（eye だけ。書かなければ 30 = 前と同じ）: 濃いまつげと見なす色の、赤みの幅（R − B が、この値未満）。
+         道具は、まつげの帯を「暗くて（明るさ 84 未満）、赤みのない色（R − B が 30 未満 = 紫がかった黒）」で見分ける（輪郭線が赤茶の絵柄で、線と分けるため）。
+         まつげが、赤茶がかった黒（例 (52,32,36)〜(66,25,21)。帯の画素の半分が、R − B 30 以上）の絵柄では、帯が、ちぎれた切れ端になる
+         （「線が取れません」は出ないのに、帯の太さが 2〜13 しか無い。確認の絵 _eye_check で、帯が、まだらに欠けている）。
+         シートの暗い画素（明るさ 50 未満）の R − B の 99% が入る値にする（例 70）。輪郭線も黒〜赤茶がかった黒の絵柄なので、--dark-static と一緒に使う
+  --lash-lum <明るさ>（eye だけ。書かなければ 84 = 前と同じ）: 濃いまつげと見なす明るさの上限。
+         上まつげの帯の中に、灰色のつや（帯より明るい、色味のない灰色の面。例 (119,107,113) = 明るさ 110）が描いてある絵柄では、つやが、帯の穴になる。
+         帯に、まわりを囲まれた穴は --lash-fill で埋まるが、目を細めたコマでは、つやが、帯の下のふち（白目の側）まで届いて、穴が白目の側へ開き、
+         埋まらない（帯の太さが 2〜5 になる。開いた目・閉じた目のコマだけ、太さが 47 前後で取れる）。つやの明るさより大きく、白目の上の影（例 194）より
+         小さい値にする（例 125）。つやの中の白い点は、--lash-fill で埋める。--lash-rb・--dark-static と一緒に使う
   --static-min <面積>（eye だけ。--dark-static と一緒に。書かなければ 0 = 前と同じ）: 見本の中の「白目から離れた、濃い塊」のうち、この画素数より小さい物は、
          動かない線にしない。目尻のはねのそばの短い毛・下まつげの点が、白目から離れた小さな塊になり、広げて、シートの帯から四角く抜かれる
          （はねの付け根に、四角い欠けができる）。眉のふち・耳の線・鼻の影（動かない線にしたい物）は、ずっと大きい
@@ -73,6 +83,8 @@ WHITE_DIFF = 14            # 白目と見なす、肌の色との差の下限（
 RED_MARGIN = 28            # 赤茶の線と見なす、肌より暗い幅（--red-margin。28 なら前と同じ）
 STATIC_MIN = 0             # 白目から離れた濃い塊のうち、これより小さい物は、動かない線にしない（--static-min。0 なら前と同じ）
 SOFT_LINES = False         # 下まつげ・目尻の絵を、肌より暗いぶんだけ不透明にした、なめらかな絵にする（--soft-lines。False なら前と同じ）
+LASH_RB = 30               # 濃いまつげと見なす、赤みの幅（R − B が、これ未満。--lash-rb。30 なら前と同じ）
+LASH_LUM = 84              # 濃いまつげと見なす、明るさの上限（--lash-lum。84 なら前と同じ）
 
 
 def dark_static(ref):
@@ -81,7 +93,7 @@ def dark_static(ref):
     濃い色のうち、細く（太い面を開いて残らない）、コマのふちに触れる線だけを取る。はねと交わる所は、太い面の一部なので残る"""
     r, g, b = ref[..., 0], ref[..., 1], ref[..., 2]
     lum = 0.3 * r + 0.59 * g + 0.11 * b
-    dk = ((lum < 84) & ((r - b) < 30)).astype(np.uint8)
+    dk = ((lum < LASH_LUM) & ((r - b) < LASH_RB)).astype(np.uint8)
     core = cv2.morphologyEx(dk, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15)))   # 輪郭線は、太さ 8〜10 画素（CW×CH の上で）
     thin = dk & (1 - cv2.dilate(core, np.ones((3, 3), np.uint8)))
     n, lab, st, _ = cv2.connectedComponentsWithStats(thin, connectivity=8)
@@ -256,7 +268,7 @@ def eye_masks(c, skin_ref, static=None):
     if WHITE_SHADE:
         # 影の灰色: 色の幅が小さく（肌は R と B の差が 60 くらい）、B が G より小さくない（紫がかっている）
         white0 = white0 | ((mn > 150) & ((c.max(2) - mn) < 30) & (b >= g - 4) & (diff > 14))
-    lashdark = (lum < 84) & ((r - b) < 30)              # 濃いまつげ（紫がかった黒）。輪郭線・耳の線は、暗くても赤茶（R が B より大きい）
+    lashdark = (lum < LASH_LUM) & ((r - b) < LASH_RB)        # 濃いまつげ（紫がかった黒）。輪郭線・耳の線は、暗くても赤茶（R が B より大きい）。赤茶がかった黒のまつげは --lash-rb
     red = (diff > 34) & ~white0 & ~lashdark & (lum < skin_lum - RED_MARGIN)
     if DARK_STATIC is not None:                         # 黒い輪郭線・耳の線は、まつげにも、赤茶の線にも入れない（--dark-static）
         lashdark = lashdark & ~DARK_STATIC
@@ -701,6 +713,10 @@ if __name__ == "__main__":
         SOFT_LINES = True; sys.argv.remove("--soft-lines")
     if "--static-min" in sys.argv:
         i_ = sys.argv.index("--static-min"); STATIC_MIN = int(sys.argv[i_ + 1]); del sys.argv[i_:i_ + 2]
+    if "--lash-rb" in sys.argv:
+        i_ = sys.argv.index("--lash-rb"); LASH_RB = float(sys.argv[i_ + 1]); del sys.argv[i_:i_ + 2]
+    if "--lash-lum" in sys.argv:
+        i_ = sys.argv.index("--lash-lum"); LASH_LUM = float(sys.argv[i_ + 1]); del sys.argv[i_:i_ + 2]
     if len(sys.argv) < 8 or sys.argv[1] not in ("eye", "mouth"):
         sys.exit(__doc__)
     (do_eye if sys.argv[1] == "eye" else do_mouth)(sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5].split(","), sys.argv[6], sys.argv[7])

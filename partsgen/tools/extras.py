@@ -132,8 +132,12 @@ def main():
         x0, y0 = meta["box"][0], meta["box"][1]
         manual = JOBS.get(n, {}).get("place")
         if manual:
-            s, tx, ty = manual
-            A = np.float32([[s / up, 0, tx], [0, s / up, ty]]); info = "手置き"
+            # [拡大率, 左, 上]。4 つ書くと [横の拡大率, 縦の拡大率, 左, 上]（描かせた絵の縦横の比が、もとの絵と数 % 違うとき。3 つなら前と同じ）
+            if len(manual) == 4:
+                s, s2, tx, ty = manual
+            else:
+                s, tx, ty = manual; s2 = s
+            A = np.float32([[s / up, 0, tx], [0, s2 / up, ty]]); info = "手置き"
         else:
             small = np.asarray(Image.open(os.path.join(work, out + ".png")).convert("RGBA"))
             ref = np.asarray(Image.open(os.path.join(work, "_ref_%s.png" % n)).convert("RGB"))
