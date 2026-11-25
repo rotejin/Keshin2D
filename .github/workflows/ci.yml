@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Repository checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # JSON, the bundled models' images (case-sensitive), vendor checksums, Python syntax,
+      # links in the documents, script encodings, and a start of tools/serve.py.
+      - name: Files, checksums, links and the local server
+        run: python3 tools/check_repo.py
+
+      # The browser checks (partsgen/tools/uicheck.mjs) are not run here: without a GPU
+      # their timing-dependent items are unreliable. They are run locally before a release.
+      - name: JavaScript syntax
+        run: |
+          set -e
+          for f in partsgen/tools/*.mjs partsgen/tools/ref/*.mjs; do node --check "$f"; done
+          tmp="$(mktemp -d)"
+          for f in js/*.js; do
+            cp "$f" "$tmp/$(basename "$f" .js).mjs"
+            node --check "$tmp/$(basename "$f" .js).mjs"
+          done

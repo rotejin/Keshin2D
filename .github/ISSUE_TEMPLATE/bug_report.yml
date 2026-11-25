@@ -1,0 +1,114 @@
+name: 不具合の報告 / Bug report
+description: 開かない、動きや表示がおかしい / It does not open or behaves wrongly
+title: "[不具合]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        報告ありがとうございます。Issue は誰でも見られます。個人情報や、使ってよいか分からない画像は貼らないでください。
+        Thanks for the report. Issues are public: please remove personal information and images you may not share.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: 何が起きたか / What happened
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 再現の手順 / Steps to reproduce
+      placeholder: |
+        1. start.bat をダブルクリック
+        2. パネルの「カメラ」を押す
+        3. …
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期待した動き / Expected behavior
+    validations:
+      required: false
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: どの部分か / Area
+      options:
+        - 起動・表示 / Start and display
+        - 顔の向き・目・表情 / Head, eyes and expressions
+        - 口・マイクの口パク / Mouth and lip sync
+        - Web カメラ / Webcam tracking
+        - 髪・飾りの揺れ / Hair and accessory physics
+        - 操作パネル・設定の保存 / Control panel and saved settings
+        - OBS・URL の指定 / OBS and URL parameters
+        - キャラを作る道具（partsgen） / Character tools (partsgen)
+        - ドキュメント / Documentation
+        - その他 / Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: model
+    attributes:
+      label: モデル / Model
+      options:
+        - クラゲちゃん（kurage02）
+        - チワちゃん（chiwa）
+        - 自分で作ったモデル / My own model
+        - モデルに関係しない / Not related
+    validations:
+      required: true
+
+  - type: dropdown
+    id: how
+    attributes:
+      label: 開き方 / How you opened it
+      options:
+        - start.bat / start.sh / tools/serve.py
+        - デモのページ（GitHub Pages） / The demo page
+        - OBS のブラウザソース / OBS browser source
+        - その他 / Other
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: OS / Operating system
+      placeholder: Windows 11 24H2
+    validations:
+      required: true
+
+  - type: input
+    id: browser
+    attributes:
+      label: ブラウザとバージョン / Browser and version
+      description: Chrome は、右上の ︙ → ヘルプ → Google Chrome について / In Chrome, ⋮ → Help → About Google Chrome
+      placeholder: Chrome 158
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: 入手の方法 / How you got it
+      options:
+        - ZIP をダウンロード / Downloaded ZIP
+        - git clone
+        - 入手していない（デモのページだけ） / Not downloaded (demo page only)
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 表示されたメッセージ・スクリーンショット / Messages and screenshots
+      description: start.bat の黒い画面に出た文字、パネルの「動かし方」の下に出た文字、ブラウザのコンソール（F12）のエラーがあれば貼ってください / Text from the start.bat window, the status line in the panel, or errors in the browser console (F12)
+    validations:
+      required: false

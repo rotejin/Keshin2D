@@ -1,0 +1,33 @@
+# Editor settings that match .gitattributes and the existing files.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+indent_style = space
+insert_final_newline = true
+
+[*.py]
+indent_size = 4
+
+[*.{js,mjs,html,yml,yaml}]
+indent_size = 2
+
+[*.{bat,ps1}]
+end_of_line = crlf
+
+[*.ps1]
+# Windows PowerShell misreads Japanese text without a BOM.
+charset = utf-8-bom
+
+[*.md]
+# Two trailing spaces can be a line break in Markdown.
+trim_trailing_whitespace = false
+
+# Bundled third-party files and exported models: leave them exactly as they are.
+[{vendor/**,models/**,partsgen/chars/**/char.json}]
+charset = unset
+end_of_line = unset
+indent_style = unset
+indent_size = unset
+insert_final_newline = unset

@@ -1,0 +1,43 @@
+name: 要望 / Feature request
+description: こんな機能や動きがほしい / Suggest an improvement
+title: "[要望]: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 困っていること・したいこと / Problem
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: ほしい機能や動き / Proposed solution
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: ほかに考えた方法 / Alternatives considered
+    validations:
+      required: false
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: どの部分か / Area
+      options:
+        - 顔の動き・表情 / Motion and expressions
+        - 口・マイクの口パク / Mouth and lip sync
+        - Web カメラ / Webcam tracking
+        - 髪・飾りの揺れ / Hair and accessory physics
+        - 操作パネル・設定 / Control panel and settings
+        - OBS・配信での使い方 / OBS and streaming
+        - キャラ作り（partsgen） / Character creation (partsgen)
+        - ドキュメント / Documentation
+        - その他 / Other
+    validations:
+      required: true

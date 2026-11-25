@@ -1,0 +1,69 @@
+name: キャラクター作りの相談 / Character creation
+description: partsgen で自分のキャラクターを作るときにうまくいかない / Trouble making your own character with partsgen
+title: "[キャラ作り]: "
+labels:
+  - character-creation
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Codex・AI のコーディングエージェントの使い方や料金、生成された絵の出来そのものには、お答えできないことがあります。
+        Issue は誰でも見られます。他人のキャラクターの画像や、使ってよいか分からない画像は貼らないでください。
+        We may not be able to help with Codex or coding-agent usage, pricing or the quality of generated pictures. Issues are public: do not attach images you may not share.
+
+  - type: dropdown
+    id: step
+    attributes:
+      label: どこで止まったか / Where it went wrong
+      options:
+        - 準備（pipeline.py check・Real-ESRGAN・Codex CLI） / Setup
+        - 段階 0〜1 基準の絵 / Base image
+        - 段階 2 髪・体の絵とキービジュアル / Hair and body images
+        - 段階 3〜5 拡大・顔の位置出し・顔のパーツ・目と口のキー / Upscale, face fitting, parts and key shapes
+        - 髪の房 / Hair locks
+        - 段階 6 モデルの書き出し・揺れ物 / Model export and physics
+        - 段階 7〜8 動かして確認・仕上げ / Checking and finishing
+        - その他 / Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: 何が起きたか / What happened
+    validations:
+      required: true
+
+  - type: input
+    id: agent
+    attributes:
+      label: 使ったエージェントとモデル / Coding agent and model
+      placeholder: Claude Code
+    validations:
+      required: false
+
+  - type: input
+    id: os
+    attributes:
+      label: OS と GPU / Operating system and GPU
+      description: 道具は Windows でしか確かめていません / The tools are tested on Windows only
+      placeholder: Windows 11 24H2, GeForce RTX 4070
+    validations:
+      required: true
+
+  - type: textarea
+    id: check
+    attributes:
+      label: pipeline.py check の出力 / Output of pipeline.py check
+      description: ユーザー名などが入ったパスは、消してから貼ってください / Remove paths that contain your user name
+      render: text
+    validations:
+      required: false
+
+  - type: textarea
+    id: report
+    attributes:
+      label: エージェントの最後の報告やエラー / The agent's last report or errors
+      description: 長い場合は、関係するところだけで構いません / Only the relevant part is fine
+    validations:
+      required: false
