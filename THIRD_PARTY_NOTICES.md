@@ -1,8 +1,8 @@
 # 使わせてもらっている物 / Third-Party Notices
 
-このリポジトリの物は、下に挙げた物のほかは、どれも MIT License（[LICENSE](LICENSE)）です。同梱のモデル `kurage02`（`models/kurage02/` の絵と `model.json`）と、`docs/images/` の絵も含みます。
+このリポジトリの物は、下に挙げた物のほかは、どれも MIT License（[LICENSE](LICENSE)）です。同梱のモデル `kurage02`・`chiwa`（`models/kurage02/`・`models/chiwa/` の絵と `model.json`）と、`docs/images/` の絵も含みます。
 
-Everything in this repository other than the items listed below is under the MIT License ([LICENSE](LICENSE)), including the bundled `kurage02` model (the images and `model.json` in `models/kurage02/`) and the images in `docs/images/`.
+Everything in this repository other than the items listed below is under the MIT License ([LICENSE](LICENSE)), including the bundled `kurage02` and `chiwa` models (the images and `model.json` in `models/kurage02/` and `models/chiwa/`) and the images in `docs/images/`.
 
 ## このリポジトリに入っている物 / Included in this repository
 
