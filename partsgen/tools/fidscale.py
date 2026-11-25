@@ -41,6 +41,9 @@ def fit_of(model):
 
 if o.box:
     boxes = [[float(v) for v in b.split(",")] for b in o.box.split(";") if b]
+    for b in boxes:
+        if abs((b[2] - b[0]) - (b[3] - b[1])) > 1:      # 正方形でないと、基準画像だけが、縦横で別の倍率に引き伸ばされて、モデルと大きさが合わなく見える
+            print("注意: --box %s は正方形ではありません（幅 %d・高さ %d）。基準画像とモデルの縮尺が、合わなくなります。正方形にしてください" % (",".join("%d" % v for v in b), b[2] - b[0], b[3] - b[1]))
 else:
     h = conf.get("hair") or {}
     cx = float(h.get("center_x") or conf["build"]["seed_head"][0]); r = float(h.get("head_r") or 520)

@@ -18,7 +18,8 @@
   poly（3 倍の絵の画素。付け根のまわりを囲む多角形）の中を、次のように作り直す:
     - cover の絵（髪だけの絵など。名前は _3x.png を除いた部分）に覆われていない所 = もとの絵で、その物が見えている所は、**もとの絵の画素**にする
       （置いた絵との境目は、feather 画素でなじませる。境目は、もとの絵と置いた絵の両方で、同じ色の面になる所に引く）
-    - cover に覆われている所は、置いた絵があればそのまま、無ければ、もとの絵から取った所の色（まん中の値）で塗る（髪の下にかくれる、のりしろ）
+    - cover に覆われている所は、置いた絵があればそのまま、無ければ、いちばん近い「見えている所」の色を延ばして塗る（髪の下にかくれる、のりしろ。
+      ふちの線・帯が、覆いの下まで続く。"fill": [R, G, B] と書くと、その 1 色で塗る。平らな色で塗ると、帯が、覆いのふちの手前で切れて見えた）
   多角形の辺のうち、物の外形をまたぐ辺は、背景（もとの絵で透明な所）か、cover の下に置く（もとの絵の、別の物を拾わないように）。
   多角形は、grid.py の目盛りで決め、確認の絵 _check/p_<番号>.png と、モデルの正面・左右いっぱいで確かめる。
 """
@@ -67,14 +68,30 @@ def add_root(res, base, root, work):
     src = vis & (ba > 0.9)
     if not src.any():
         sys.exit("extras.jobs の root.poly の中に、もとの絵の見えている所がありません")
-    fill = np.array(root["fill"], np.float32) if root.get("fill") else np.median(base[..., :3][src].astype(np.float32), axis=0)
     f = float(root.get("feather", 6))
     w = cv2.GaussianBlur(inp.astype(np.float32), (0, 0), f) if f > 0 else inp.astype(np.float32)
     w = np.where(pa > 0.02, w, inp.astype(np.float32)) * vis                       # 置いた絵のある所だけ、境目をなじませる
     out = premult(res) * (1 - w[..., None]) + premult(base) * w[..., None]
     hid = inp & cov & (pa < 0.5)                                                   # 覆いの下で、置いた絵が無い所
-    out[hid] = np.concatenate([fill, [255.0]])
-    print("  root: もとの絵から %d 画素、覆いの下の塗り %d 画素（色 %s）" % (int((w > 0.5).sum()), int(hid.sum()), [int(round(v)) for v in fill]))
+    if root.get("fill"):
+        out[hid] = np.concatenate([np.array(root["fill"], np.float32), [255.0]])
+        how = "色 %s" % [int(v) for v in root["fill"]]
+    elif hid.any():
+        # いちばん近い「もとの絵から取った所」の色を延ばす（置いた絵の色は、延ばさない: 付け根の丸い端の、濃い輪郭線が、黒いくさびになって延びた）
+        ys, xs = np.where(inp)
+        y0, y1, x0, x1 = max(0, ys.min() - 8), min(H, ys.max() + 9), max(0, xs.min() - 8), min(W, xs.max() + 9)
+        sub = out[y0:y1, x0:x1]
+        known = (sub[..., 3] > 250) & src[y0:y1, x0:x1] & (w[y0:y1, x0:x1] > 0.98)
+        _, lab = cv2.distanceTransformWithLabels((~known).astype(np.uint8), cv2.DIST_L2, 5, labelType=cv2.DIST_LABEL_PIXEL)
+        lut = np.zeros((int(lab.max()) + 1, 2), np.int32)
+        lut[lab[known]] = np.argwhere(known)
+        hy, hx = np.where(hid[y0:y1, x0:x1])
+        sy, sx = lut[lab[hy, hx]].T
+        sub[hy, hx] = sub[sy, sx]
+        how = "近くの色を延ばした"
+    else:
+        how = "なし"
+    print("  root: もとの絵から %d 画素、覆いの下の塗り %d 画素（%s）" % (int((w > 0.5).sum()), int(hid.sum()), how))
     return unpremult(np.clip(out, 0, 255))
 
 
