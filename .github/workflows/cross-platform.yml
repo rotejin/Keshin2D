@@ -1,0 +1,91 @@
+name: Cross-platform check
+
+# Run by hand (Actions → Cross-platform check → Run workflow).
+# Starts the viewer on Linux, macOS and Windows and drives it in headless Chrome
+# (partsgen/tools/uicheck.mjs). These machines have no GPU, so rendering is software-only
+# and the timing-dependent items of uicheck may fail; the job result is decided by the
+# essential items only. The full log and the screenshots are in the artifacts.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  viewer:
+    name: Viewer on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    env:
+      AVATAR_SHOOT_SW: "1"
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Node.js 22
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+
+      - name: Versions
+        run: |
+          uname -a
+          node --version
+          (python3 --version || python --version)
+
+      - name: Repository checks
+        run: |
+          if command -v python3 >/dev/null 2>&1; then python3 tools/check_repo.py; else python tools/check_repo.py; fi
+
+      - name: Start with start.sh
+        if: runner.os != 'Windows'
+        run: |
+          ./start.sh --no-browser --port 8790 > "$RUNNER_TEMP/serve.log" 2>&1 &
+          for i in $(seq 1 40); do curl -sf http://127.0.0.1:8790/models/index.json && break; sleep 0.5; done
+          echo
+          curl -sf -o /dev/null http://127.0.0.1:8790/index.html
+          curl -sf -o /dev/null http://127.0.0.1:8790/models/chiwa/model.json
+          cat "$RUNNER_TEMP/serve.log"
+
+      - name: Drive the viewer in headless Chrome (kurage02)
+        continue-on-error: true
+        run: node partsgen/tools/uicheck.mjs kurage02 "$RUNNER_TEMP/ui/kurage02" 2>&1 | tee "$RUNNER_TEMP/ui_kurage02.log"
+
+      - name: Drive the viewer in headless Chrome (chiwa)
+        continue-on-error: true
+        run: node partsgen/tools/uicheck.mjs chiwa "$RUNNER_TEMP/ui/chiwa" 2>&1 | tee "$RUNNER_TEMP/ui_chiwa.log"
+
+      - name: Essential items
+        run: |
+          bad=0
+          for m in kurage02 chiwa; do
+            log="$RUNNER_TEMP/ui_$m.log"
+            echo "== $m: $(grep -c '^ok ' "$log") ok / $(grep -c '^NG ' "$log") NG"
+            grep '^NG ' "$log" || true
+            for want in "ok 読み込みが終わる" "ok スクリプトのエラーが出ていない" "ok コンソールの警告・エラー、読み込みの失敗が無い" "ok モデルを選ぶ欄に、一覧のモデルが出て" "ok 外への通信が無い"; do
+              grep -q "^$want" "$log" || { echo "MISSING: $want"; bad=1; }
+            done
+          done
+          exit $bad
+
+      - name: Upload logs and screenshots
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: viewer-${{ matrix.os }}
+          path: |
+            ${{ runner.temp }}/ui_*.log
+            ${{ runner.temp }}/ui/
+            ${{ runner.temp }}/serve.log
+          if-no-files-found: ignore
+          retention-days: 7
