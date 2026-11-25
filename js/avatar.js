@@ -1083,6 +1083,10 @@ const bangsGroup = (name) => (/前髪[67]|エアインテーク/.test(name) ? 's
 //   pivot       支点。基準の箱の中での割合 [x, y]（左上が 0,0）。len: 支点から先の長さ（箱の高さに対する割合。省略で箱の下端まで）
 //   parent      別の揺れ物の id。その揺れ物の変形に乗る（傘のふちに付いた垂れ、など）
 //   gain 大きさ / k 速さ（ばね）/ c 止まりやすさ（減衰）/ grav かしげたとき垂れる量 / tip 先の行きすぎ / squash 伸び縮み / pulse 待機中の脈動
+//   expr        表情ごとの向き {"表情の名前": 角度（度。＋で、画面で時計回り）}（書かなければ前と同じ）。その表情の間、止まる向きを、この角度だけずらす
+//               （ケモ耳: 困ると外へ寝かせ、驚くと立てる）。切り替わりは、ばねが運ぶので、ぴょこんと弾んで向きが変わる
+//   twitch      ときどき、ぴくっと動く {"every": [最短, 最長]（秒）, "kick": 速さ（ラジアン毎秒。＋で時計回り）, "n": 回数（省略 1）, "gap": 間（秒。省略 0.13）}
+//               （書かなければ前と同じ）。待機中（手で止めていないとき）だけ。速さを足すだけで、あとは、ばねが戻す
 const PHYS_DEF = {
   jelly: { k: 120, c: 6, gain: 1, grav: 0, tip: 1.6, squash: 1, pulse: 0, max: 0.35 },
   cloth: { k: 110, c: 8, gain: 1, grav: 0.3, tip: 1.7, squash: 1, pulse: 0, max: 0.5 },
@@ -1224,9 +1228,20 @@ function stepPhys(dt, dv, dvy, roll, time) {
     // 振り子は、頭（体）の傾きと同じ向きに振ると真下へ垂れる（headPose・bodyT は、roll が正で時計回り）。
     // 前は、振り子も布と同じ −roll で、傾きの 2 倍、横へ倒れていた（鎖・ピアスなど）。布の向きは、目で合わせてあるので変えない
     // 上へ伸びる毛（sprout）も、振り子と同じ向き（傾けた側へ、先が少し倒れる）
-    const rest = -(onBody ? body.roll : roll) * s.grav * (s.type === 'pendulum' || s.type === 'sprout' ? -1 : 1) + 0.004 * Math.sin(time * 0.0013 + s.seed) * (idle ? 1 : 0);
+    const ex = s.expr ? (s.expr[exprName] || 0) * DEG : 0;   // 表情ごとの向き（spec.expr）
+    const rest = -(onBody ? body.roll : roll) * s.grav * (s.type === 'pendulum' || s.type === 'sprout' ? -1 : 1) + 0.004 * Math.sin(time * 0.0013 + s.seed) * (idle ? 1 : 0) + ex;
     const sg = s.gain * USER.sway * s.ug;   // 大きさ = キャラの初期値 × 使う人の好み（全体 × 飾りごと）
     s.w -= (a * sg) / 550;
+    if (s.twitch && idle) {   // ときどきの「ぴくっ」（spec.twitch）。間は、揺れ物ごとに決まった並び（撮り直しても同じ）
+      const tw = s.twitch, ev = tw.every || [4, 9], rnd = (i) => { const v = Math.sin((s.seed + 1) * 12.9898 + i * 78.233) * 43758.5453; return v - Math.floor(v); };
+      if (s.twT === undefined) { s.twI = 0; s.twL = 0; s.twT = ev[0] + (ev[1] - ev[0]) * rnd(0); }
+      s.twT -= dt;
+      if (s.twT <= 0) {
+        s.w += tw.kick; s.w2 += tw.kick * 1.3;
+        if (++s.twL < (tw.n || 1)) s.twT = tw.gap || 0.13;
+        else { s.twL = 0; s.twT = ev[0] + (ev[1] - ev[0]) * rnd(++s.twI); }
+      }
+    }
     s.wy -= (ay * sg) / 1100 + (Math.abs(a) * sg) / 9000;      // 横に動いたときも、少し縦に弾む
     const sprout = s.type === 'sprout';
     for (let i = 0; i < steps; i++) {
@@ -1245,8 +1260,8 @@ function stepPhys(dt, dv, dvy, roll, time) {
       }
       s.by += s.wy * h;
     }
-    s.phi = clamp(s.phi, -s.max, s.max);
-    s.phi2 = clamp(s.phi2, -s.max * 1.6, s.max * 1.6);
+    s.phi = clamp(s.phi, ex - s.max, ex + s.max);
+    s.phi2 = clamp(s.phi2, ex - s.max * 1.6, ex + s.max * 1.6);
     s.by = clamp(s.by, -0.09, 0.09);
     if (s.stiff) { s.phi2 = s.phi; s.w2 = s.w; }   // まっすぐのまま振れる（先の遅れを持たない）
   }

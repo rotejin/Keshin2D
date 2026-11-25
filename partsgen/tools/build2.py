@@ -385,6 +385,22 @@ for s_ in ("" if CLEAN_EYES else "LR"):
     k_ = (np.clip((mx_ - 205) / 30.0, 0, 1) * 0.85)[..., None]
     wfill = wfill * (1 - k_) + np.array([252, 249, 250], np.float32) * k_
     L["20_eye_white_" + s_] = (wfill, soft(wm, 1.2))
+if KEY_EYE and CHAR.get("key_eye_trim"):
+    # char.json の key_eye_trim: true（書かなければ、しない = 前と同じ）。白目の絵を、目のシートの白目の左右の範囲（キーの線がある列）で切る。
+    # 白目の絵は、目の枠の絵から取るので、シートの白目より、目頭・目尻の側へ広いことがある。広いぶんには、キーの線が無く（端の値のまま、平らに延びる）、
+    # まつげの帯は、そこで細くなって下がるので、帯の上・外に、白目が、薄い色のかけらとして出る（目頭で、幅 20・高さ 10 ほど出た例がある）
+    sxk_ = (kb_[2] - kb_[0]) / float(KEY_EYE["canvas"][0])
+    ka_, kz_ = min(k_["xa"] for k_ in KEY_EYE["keys"].values()), max(k_["xb"] for k_ in KEY_EYE["keys"].values()) + 1
+    xs_ = np.arange(Ww, dtype=np.float32) + 0.5
+    for s_ in "LR":                                    # L = 画面左（見本のまま）、R = 画面右（左右を返して置いた）
+        if s_ == "L":
+            e0_, e1_ = [cxL_ + (kb_[0] + t_ * sxk_ - cxL_) * KSX_ for t_ in (ka_, kz_)]
+        else:
+            e0_, e1_ = sorted(cxR_ + (KEY_EYE_POS[0] + (kb_[2] - kb_[0]) - t_ * sxk_ - cxR_) * KSX_ for t_ in (ka_, kz_))
+        wr_, wa_ = L["20_eye_white_" + s_]
+        b0_ = _bbox(wa_ > 0.5)
+        L["20_eye_white_" + s_] = (wr_, wa_ * np.clip(np.minimum(xs_ - e0_, e1_ - xs_) / 2.0 + 0.5, 0, 1)[None, :])
+        print("key_eye_trim: 白目 %s の左右 %d〜%d を、シートの白目の範囲 %.0f〜%.0f で切る" % (s_, b0_[0], b0_[1], e0_, e1_))
 # ---------- 頭・眉・耳を「大きく清書させた絵」に差し替える（HEAD・BROW・EAR）。目と同じ考え方で、切り抜きは位置と大きさを知るためだけに使う
 if os.environ.get("HEAD"):
     # 頭だけ（耳・目・眉・鼻・口・首なし）を、輪郭線が一周つながった絵として大きく描かせたもの。
@@ -1679,6 +1695,12 @@ if KEY_EYE and KEY_EYE_IMG:
             od_ = np.argsort(mx_)
             conv_ = lambda arr: [round(float(t), 1) for t in np.interp(xs_, mx_[od_], (oy + S * (cyL_ + (kb_[1] + np.asarray(arr, np.float32) * syk_ - cyL_) * KSY_ + KDY_ + wdy_))[od_])]
             KE_[tom][nm_] = {"T": conv_(k_["T"]), "B": conv_(k_["B"]), "L": conv_(k_["L"]), "closed": bool(k_.get("closed"))}
+            if CHAR.get("key_eye_trim"):
+                # キーの線が無い列（シートの白目の外）では、目の開き（L − B）を 0 にする（char.json の key_eye_trim: true。書かなければ前と同じ）。
+                # モデルの白目の絵（目の枠の絵から取る）が、シートの白目より、目頭・目尻の側へ広いと、線の無い列は、端の値のまま平らに延びる。
+                # まつげの帯は、そこで細くなって下がるので、帯の上・外に、白目が、薄い色のかけらとして出る（目頭で、幅 20・高さ 10 ほど出た例がある）
+                out_ = (xs_ < mx_.min()) | (xs_ > mx_.max())
+                KE_[tom][nm_]["L"] = [b_ if o_ else l_ for b_, l_, o_ in zip(KE_[tom][nm_]["B"], KE_[tom][nm_]["L"], out_)]
             if CHAR.get("key_eye_slope"):
                 # 目の開き（L − B）が、目尻・目頭の端から増える速さに上限を付ける（char.json の key_eye_slope = 1 列あたりのモデルの画素。書かなければ前と同じ）。
                 # 白目の端が縦にまっすぐ切れて取れたキー（にらみの目: 目尻の影の所で、開きが 1 列で 65 画素とんだ例がある）で、白目が目尻の外へ四角くはみ出すのを、くさび形に閉じる

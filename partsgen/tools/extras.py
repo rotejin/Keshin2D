@@ -10,6 +10,17 @@
 
 対応が取れないとき（模様の少ない小さな絵など）は、char.json の extras.jobs.<番号>.place = [拡大率, 左, 上]（3 倍の絵での値）で手で置く。
 確認用に、もとの絵と重ねて比べる絵を _check/p_<番号>.png に出す（左: もとの絵、中: 置いた絵、右: 交互に重ねた絵）。
+
+付け根の描き足し（char.json の extras.jobs.<番号>.root。書かなければ、しない = 前と同じ）:
+  "root": {"poly": [[x, y], …], "cover": ["03_front_hair"], "feather": 6}
+  頭に付いた物（ケモ耳など）を描かせると、髪の下へもぐる付け根が、もとの絵より短く・細く描かれることがある（丸い端で終わる）。
+  置いた絵は、もとの絵と付け根の形が違うので、正面でも、付け根の端が髪のふちの外に見え、後ろの髪や背景が、すき間からのぞく。
+  poly（3 倍の絵の画素。付け根のまわりを囲む多角形）の中を、次のように作り直す:
+    - cover の絵（髪だけの絵など。名前は _3x.png を除いた部分）に覆われていない所 = もとの絵で、その物が見えている所は、**もとの絵の画素**にする
+      （置いた絵との境目は、feather 画素でなじませる。境目は、もとの絵と置いた絵の両方で、同じ色の面になる所に引く）
+    - cover に覆われている所は、置いた絵があればそのまま、無ければ、もとの絵から取った所の色（まん中の値）で塗る（髪の下にかくれる、のりしろ）
+  多角形の辺のうち、物の外形をまたぐ辺は、背景（もとの絵で透明な所）か、cover の下に置く（もとの絵の、別の物を拾わないように）。
+  多角形は、grid.py の目盛りで決め、確認の絵 _check/p_<番号>.png と、モデルの正面・左右いっぱいで確かめる。
 """
 import sys, os, json
 import numpy as np
@@ -35,6 +46,36 @@ def unpremult(pm):
 def on_gray(rgba, bg=128):
     a = rgba[..., 3:4].astype(np.float32) / 255
     return (rgba[..., :3].astype(np.float32) * a + bg * (1 - a)).astype(np.uint8)
+
+
+def add_root(res, base, root, work):
+    """付け根を、もとの絵から描き足す（extras.jobs.<番号>.root。冒頭の説明）。res・base は RGBA（3 倍の絵と同じ大きさ）"""
+    H, W = res.shape[:2]
+    m = np.zeros((H, W), np.uint8)
+    cv2.fillPoly(m, [np.int32(np.round(np.array(root["poly"], np.float32)))], 255)
+    inp = m > 0
+    cov = np.zeros((H, W), bool)
+    for c in root.get("cover", []):
+        cp = os.path.join(work, c + "_3x.png")
+        if not os.path.isfile(cp):
+            sys.exit("extras.jobs の root.cover の絵がありません: " + cp)
+        cov |= np.asarray(Image.open(cp).convert("RGBA"))[..., 3] > 128
+    cov = cv2.dilate(cov.astype(np.uint8), np.ones((7, 7), np.uint8)) > 0          # 覆いのふちの線・帯を、拾わない
+    pa = res[..., 3].astype(np.float32) / 255
+    ba = base[..., 3].astype(np.float32) / 255
+    vis = inp & ~cov
+    src = vis & (ba > 0.9)
+    if not src.any():
+        sys.exit("extras.jobs の root.poly の中に、もとの絵の見えている所がありません")
+    fill = np.array(root["fill"], np.float32) if root.get("fill") else np.median(base[..., :3][src].astype(np.float32), axis=0)
+    f = float(root.get("feather", 6))
+    w = cv2.GaussianBlur(inp.astype(np.float32), (0, 0), f) if f > 0 else inp.astype(np.float32)
+    w = np.where(pa > 0.02, w, inp.astype(np.float32)) * vis                       # 置いた絵のある所だけ、境目をなじませる
+    out = premult(res) * (1 - w[..., None]) + premult(base) * w[..., None]
+    hid = inp & cov & (pa < 0.5)                                                   # 覆いの下で、置いた絵が無い所
+    out[hid] = np.concatenate([fill, [255.0]])
+    print("  root: もとの絵から %d 画素、覆いの下の塗り %d 画素（色 %s）" % (int((w > 0.5).sum()), int(hid.sum()), [int(round(v)) for v in fill]))
+    return unpremult(np.clip(out, 0, 255))
 
 
 def register(gen, ref):
@@ -160,6 +201,8 @@ def main():
         sc_net = float(np.hypot(A[0, 0], A[1, 0]))
         placed = cv2.warpAffine(premult(gen), A, (W, H), flags=cv2.INTER_AREA if sc_net < 0.7 else cv2.INTER_LANCZOS4, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
         res = unpremult(np.clip(placed, 0, 255))
+        if JOBS.get(n, {}).get("root"):
+            res = add_root(res, np.asarray(base), JOBS[n]["root"], work)
         Image.fromarray(res).save(os.path.join(work, out + "_placed.png"))
         # 確認: もとの絵・置いた絵・市松に交互に重ねた絵（ずれていると、ます目の境で線が食い違う）
         ys, xs = np.where(res[..., 3] > 8)
