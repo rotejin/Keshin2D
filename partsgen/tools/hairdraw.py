@@ -74,6 +74,10 @@ class Ctx:
             sys.exit('キャラの設定がありません: ' + cfg)
         self.conf = json.load(open(cfg, encoding='utf-8'))
         self.hair = self.conf.get('hair') or sys.exit('char.json に "hair" がありません')
+        # 完成絵の見本（chara.png）の背景色。char.json の hair.ref_bg: [R, G, B]（書かなければ白 = 前と同じ）。
+        # 髪が白・白銀のキャラは、白い背景では、髪の外形（毛先・はねた毛）が背景に溶けて、見本から読み取れない。
+        # キャラの絵に無い色（髪より暗く、服より明るい色）にする（WORKFLOW.md の段階 2）
+        self.ref_bg = tuple(int(v) for v in self.hair.get('ref_bg', (255, 255, 255)))
         self.work = kenv.char_work(char)
         self.hd = os.path.join(self.work, 'hair')
         for d in ('src', 'grp', 'jobs'):
@@ -162,14 +166,14 @@ def design(c, part):
         sys.exit('指示文がありません: ' + pr)
     name = 'design_' + part
     prompt = open(pr, encoding='utf-8').read().replace('{OUT}', name) + '\n' + open(os.path.join(CODEX, 'hair_design_rules.txt'), encoding='utf-8').read()
-    ins = {'chara': c.crop('00_base', part, (255, 255, 255)), 'hair': c.crop(c.hair[part]['from'], part, (128, 128, 128))}
+    ins = {'chara': c.crop('00_base', part, c.ref_bg), 'hair': c.crop(c.hair[part]['from'], part, (128, 128, 128))}
     if os.path.isfile(c.src('key')):
         # 全体の絵（キービジュアル。HD key で描かせて、選んだものを hair/src/key.png に置く）があれば、その部分の範囲を切り出して渡す。
         # キービジュアルは、後ろ髪の範囲（頭のまわりの全体）で描いてある
         kb, pb = c.hair['back']['box'], c.hair[part]['box']
         k = Image.open(c.src('key')).convert('RGB')
         sc = k.width / float(kb[2] - kb[0])
-        cv = Image.new('RGB', (int(round((pb[2] - pb[0]) * sc)), int(round((pb[3] - pb[1]) * sc))), (255, 255, 255))
+        cv = Image.new('RGB', (int(round((pb[2] - pb[0]) * sc)), int(round((pb[3] - pb[1]) * sc))), c.ref_bg)
         cv.paste(k, (int(round((kb[0] - pb[0]) * sc)), int(round((kb[1] - pb[1]) * sc))))
         ins['key'] = cv.resize(ins['hair'].size, Image.LANCZOS)
     run_jobs(c, [(name, prompt, ins)])
@@ -187,7 +191,7 @@ def key(c, part):
     pr = open(kp, encoding='utf-8').read()
     if '{OUT}' not in pr:
         sys.exit('hair_key.txt に {OUT} がありません。保存する名前を {OUT}.png と書いてください（同じ指示文で、案を key_1・key_2 … と描かせます）')
-    chara = c.crop('00_base', 'back', (255, 255, 255))
+    chara = c.crop('00_base', 'back', c.ref_bg)
     run_jobs(c, [('key_%d' % (i + 1), pr.replace('{OUT}', 'key_%d' % (i + 1)), {'chara': chara}) for i in range(int(os.environ.get('HAIR_KEY_N', 2)))])
 
 

@@ -3,6 +3,8 @@
  "_todo": [
   "段階 1（PY fidelity の前）: src_face_box（src.png の中の、頭の範囲）と base_face_box（00_base.png = 1024×1536 の中の、頭の範囲）を足す。どちらも [x0, y0, x1, y1] で、髪・髪飾り・アホ毛まで入れ、縦横の比をそろえる（grid.py の目盛りで読む）。書かないと、00_base は、下の build.seed_head・hair.head_r（kurage02 の値）で切り出されて、頭が切れる",
   "段階 0: talkDemo（「口パクデモ」のせりふ。キャラの名前を名乗るせりふに）。pad_top（頭頂より上へ大きく出る物が無ければ、消してよい）",
+  "段階 1（元の絵の小物が小さいとき・基準画像を直すとき）: job_inputs（{\"00\": {\"src\": \"src\", \"items\": \"items\"}} のように、00 に渡す絵を足す）。小物を拡大して並べた見本は partsgen/tools/refsheet.py、良いと言われた絵の小さな 1 か所だけを直した見本は partsgen/tools/refpatch.py で作る（WORKFLOW.md の段階 1）",
+  "段階 2（HD key の前。髪が白・白銀・ごく薄い色のキャラ）: hair.ref_bg [R, G, B]（髪の見本の背景色。書かなければ白。キャラの絵に無い色で、髪より暗く、服より明るい色。例 [157, 184, 160]）。hair_key.txt の「背景は白」も、その色に書き換える",
   "段階 2（HD key の前）: hair.back の box（00_base の 3 倍の絵で、頭のまわりの全体 = 後ろ髪の全体が入り、余白が 1 割ほどの範囲。横 3:縦 2）。入っているのは kurage02 の値。grid.py で 00_base_3x.png を見て置く",
   "段階 2（HD key の前）の hair.back の box は、髪が絵の幅いっぱい・上の端まであるキャラでは、絵からはみ出してよい（負の値・絵の幅より大きい値。外は背景色で埋まる）",
   "段階 4: iris_hue・eyeL・eyeR・build・ear_ymax・tone_rg_min ほか色の条件（probe.py で測って、WORKFLOW.md の「キャラごとに置き直す値」の 2 つの表で決める）。肌の影（首・耳）の B が 130 以下なら tone_bmin（例 95）。白目がクリーム色なら skin_rg_min を上げ、eye_open_simple を {\"white_smax\": 0.19} のように書く。瞳が橙〜琥珀色で肌の彩度が高いときは、iris_hue に肌の色相（20〜25）を入れない",
