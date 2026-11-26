@@ -143,8 +143,14 @@ Add them after `index.html?`, joined with `&`.
 | `exp` | `exp=笑顔` | An expression, by its Japanese name; the model is held in it |
 | `yaw`, `pitch`, `roll` | `yaw=20` | Head turn, nod and tilt in degrees; the model is held there |
 | `cx`, `cy`, `zoom` | `zoom=2&cy=800` | View centre and size (the saved placement is then ignored) |
+| `irisSpring` | `irisSpring=1` | Preview springy iris deformation as the eyes open, close or change direction |
+| `lashSpring` | `lashSpring=1` | Preview a spring in eyelid movement, with the lashes and edge of the eye whites moving together |
 
 The sliders under キャラを作る人向け can also be set by name (for example `yawMax=25`; the names are in `PARAMS` and `TUNE` in `js/avatar.js`). `set=`, which carries all tuning values, is produced by the OBS URL button.
+
+In キャラを作る人向け → 瞳・まつげの弾み, use 瞳の弾み and まつげの弾み to switch the two effects independently. The browser remembers the switches per model.
+
+To enable the effects for a model by default, add `"irisSpring": true` for the iris or `"lashSpring": true` for the lashes under `eyeTune` in `char.json`, then re-export the model. The settings export includes enabled switches. A URL value of `1` or `0` overrides the switch for that page.
 
 ## Make your own character
 

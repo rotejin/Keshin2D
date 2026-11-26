@@ -633,7 +633,7 @@ function makeEye(c) {
     return corner + e.side * d * k;
   };
   // 瞳のぷるん。jx・jy は位置のゆれ(px。ばね)。px・py はまばたきのあとの伸び縮み（横・縦。0 が元の大きさ）、sh はうるみのゆらめき
-  e.jig = { jx: 0, jy: 0, vx: 0, vy: 0, pgx: 0, pgy: 0, armed: false, t0: -9, px: 0, py: 0, sh: 0 };
+  e.jig = { jx: 0, jy: 0, vx: 0, vy: 0, pgx: 0, pgy: 0, armed: false, t0: -9, px: 0, py: 0, sh: 0, iris: null };
   // 瞳の中のふくらみ（レンズ）の範囲。瞳の絵より少し広い だ円
   { const b = byName[c === model.curves.eyeR ? '瞳ベースR' : '瞳ベースL']; e.lrx = (b ? b.w / 2 : 78) * 1.12; e.lry = (b ? b.h / 2 : 78) * 1.12; }
   e.update = (open, smile, gx, gy) => {
@@ -745,6 +745,34 @@ function puruXY(dt, out) {
   out[1] = decay * (Math.cos(TAU * bt * 5.0 + 0.08) * 0.8 + Math.sin(TAU * bt * 8.3 + 0.65) * 0.2) * 0.39;
 }
 const forcedPuru = q.has('puruT') ? +q.get('puruT') : null;   // 確認用: ぷるんを、合図から決まった秒数の所で止める
+const { createIrisSpring, applyIrisSpring, createLashSpring } = await import('./eye-springs.js?v=' + JS_V);
+const EYE_SPRINGS = [
+  { key: 'irisSpring', label: '瞳の弾み', create: createIrisSpring },
+  { key: 'lashSpring', label: 'まつげの弾み', create: createLashSpring },
+];
+const EYE_SPRING_KEY = MODEL_NAME + '.eye-springs.v1';
+let savedEyeSprings = {};
+try { savedEyeSprings = { ...JSON.parse(localStorage.getItem(EYE_SPRING_KEY) || '{}') }; } catch (e) { /* 保存が使えない環境では初期値のまま */ }
+const eyeSprings = {};
+const presetEyeTune = Object.fromEntries(EYE_TUNE.map(({ key, def }) => [key, def]));
+function setEyeSpring(option, enabled) {
+  eyeSprings[option.key] = enabled ? { R: option.create(), L: option.create() } : null;
+  if (option.key === 'irisSpring') {
+    for (const e of [eyes.R, eyes.L]) {
+      const j = e.jig;
+      j.armed = false;
+      j.t0 = -9;
+      j.px = j.py = 0;
+      j.iris = null;
+    }
+  }
+}
+for (const option of EYE_SPRINGS) {
+  const key = option.key, flag = q.get(key), saved = savedEyeSprings[key];
+  const preference = typeof saved === 'boolean' ? saved : model.eyeTune?.[key] === true;
+  const enabled = flag === '1' || (flag !== '0' && preference);
+  setEyeSpring(option, enabled);
+}
 let eyeRest = 1;       // 今の表情での「開いた目」の開き（細めた表情でも、開ききったことが分かるように）
 const puruTmp = [0, 0];
 // 位置のゆれは、視線が動いたとき・頭が動いたときに、ばねを弾く
@@ -758,9 +786,13 @@ function stepEyeJig(dt, dv, dvy, time) {
     else if (j.armed && op >= 0.94 * eyeRest) { j.armed = false; j.t0 = ts + (late ? 0.026 : 0); }
     if (forcedPuru !== null) { puruXY(forcedPuru, puruTmp); j.px = puruTmp[0]; j.py = puruTmp[1]; j.sh = 0; }
     else {
-      puruXY(ts - j.t0, puruTmp);
-      j.px += (puruTmp[0] * (late ? 0.96 : 1) - j.px) * follow;
-      j.py += (puruTmp[1] * (late ? 0.96 : 1) - j.py) * follow;
+      if (eyeSprings.irisSpring) {
+        j.iris = eyeSprings.irisSpring[key](F['eye' + key], F.gazeX, F.gazeY, dt);
+      } else {
+        puruXY(ts - j.t0, puruTmp);
+        j.px += (puruTmp[0] * (late ? 0.96 : 1) - j.px) * follow;
+        j.py += (puruTmp[1] * (late ? 0.96 : 1) - j.py) * follow;
+      }
       const i = late ? 1 : 0;
       j.sh = idle ? Math.sin(TAU * (ts * 1.45 + i * 0.17)) * 0.006 + Math.sin(TAU * (ts * 2.35 + i * 0.31)) * 0.003 : 0;
     }
@@ -1282,11 +1314,19 @@ function eyePart(L, key) {
     p.deform = (x, y, out) => {
       const j = e.jig, k = isHl ? 1.4 : 1;   // ハイライトは少し大きくゆれる
       const dx = x - e.cx, dy = y - e.cy;
+      if (eyeSprings.irisSpring && j.iris && forcedPuru === null) {
+        applyIrisSpring(j.iris, e.lrx, e.lry, dx, dy, out);
+        const ik = 1 + 0.2 * (F.irisSize || 0), strength = USER.puru;
+        e.group.apply(e.cx + lerp(dx, out[0], strength) * ik + e.gx * 20 * hl,
+          e.cy + lerp(dy, out[1], strength) * ik + e.gy * 13 * hl + (1 - Math.min(e.open, 1)) * 10, out);
+        return;
+      }
       const r2 = (dx * dx) / (e.lrx * e.lrx) + (dy * dy) / (e.lry * e.lry);
       const m = r2 < 1 ? Math.pow(1 - r2, 2.2) : 0;
-      const P = eyeTune.puru * USER.puru, Lm = eyeTune.lens * USER.puru * m * 4;
-      const sx = 1 + P * j.px * (0.15 + Lm * 0.32) + eyeTune.shimmer * USER.puru * 4 * m * j.sh;
-      const sy = 1 + P * j.py * (0.15 + Lm * 0.28) - eyeTune.shimmer * USER.puru * 4 * m * j.sh * 0.45;
+      const irisTune = eyeSprings.irisSpring && forcedPuru === null ? presetEyeTune : eyeTune;
+      const P = irisTune.puru * USER.puru, Lm = irisTune.lens * USER.puru * m * 4;
+      const sx = 1 + P * j.px * (0.15 + Lm * 0.32) + irisTune.shimmer * USER.puru * 4 * m * j.sh;
+      const sy = 1 + P * j.py * (0.15 + Lm * 0.28) - irisTune.shimmer * USER.puru * 4 * m * j.sh * 0.45;
       const ik = 1 + 0.2 * (F.irisSize || 0);   // 表情の「瞳の大きさ」（見開きで小さく）
       const px = e.cx + dx * sx * ik + j.jx * k, py = e.cy + dy * sy * ik + j.jy * k;
       e.group.apply(px + e.gx * 20 * hl, py + e.gy * 13 * hl + (1 - Math.min(e.open, 1)) * 10, out);
@@ -2229,11 +2269,14 @@ function render(time, dt) {
   pose.oy = tmp[1] - PIV[1] + (idle ? body.hb * 1.5 : 0);
 
   stepSway(dt, time);
+  // まぶたと白目は同じ開きで動かし、弾んでも境目が離れないようにする。
+  const lashR = eyeSprings.lashSpring?.R(F.eyeR, dt);
+  const lashL = eyeSprings.lashSpring?.L(F.eyeL, dt);
   if (skipDraw) return;
   // 下まぶたは、口角が上がる・口が大きく開くと、ほおに押されて少し上がる
   eyes.R.lift = eyes.L.lift = tune.link * (0.03 * clamp(F.mouthForm, 0, 1) + 0.022 * clamp(F.mouthOpen, 0, 1));
-  eyes.R.update(F.eyeR, F.eyeSmile * smileSide.R, F.gazeX, F.gazeY);
-  eyes.L.update(F.eyeL, F.eyeSmile * smileSide.L, F.gazeX, F.gazeY);
+  eyes.R.update(lashR ?? F.eyeR, F.eyeSmile * smileSide.R, F.gazeX, F.gazeY);
+  eyes.L.update(lashL ?? F.eyeL, F.eyeSmile * smileSide.L, F.gazeX, F.gazeY);
   brows.R.update(); brows.L.update(); nose.update(); pin.update(); cheeks[0].update(); cheeks[1].update();
   const o = [0, 0];
   for (const p of parts) {
@@ -2347,7 +2390,8 @@ const GAZE_SPRING = { gazeX: { f: 6.2, d: 0.82, r: 0.2, v: 0, pt: null }, gazeY:
 function gazeStep(g, key, dt) {
   const tg = target[key];
   if (g.pt === null) g.pt = tg;
-  const b = eyeTune.gazeBounce * USER.puru, d = b <= 1 ? lerp(1, g.d, b) : lerp(g.d, 0.5, b - 1), r = g.r * Math.min(b, 1);
+  const b = (eyeSprings.irisSpring ? presetEyeTune : eyeTune).gazeBounce * USER.puru;
+  const d = b <= 1 ? lerp(1, g.d, b) : lerp(g.d, 0.5, b - 1), r = g.r * Math.min(b, 1);
   const n = Math.max(1, Math.ceil(dt / (1 / 120))), h = dt / n, tv = (tg - g.pt) / dt, om = TAU * g.f;
   for (let i = 0; i < n; i++) {
     g.v += (om * om * (tg - cur[key]) + 2 * d * om * (r * tv - g.v)) * h;
@@ -2999,6 +3043,25 @@ if (PHYS.length) {
   b.addEventListener('click', () => { for (const t of EYE_TUNE) { eyeTune[t.key] = t.def; t.input.value = t.def; t.show(); } saveEye(); });
   root.appendChild(b);
 }
+{
+  const root = uiSection('eye-spring', '瞳・まつげの弾み');
+  const row = document.createElement('div'); row.className = 'row';
+  for (const option of EYE_SPRINGS) {
+    const label = document.createElement('label'); label.className = 'chk';
+    const input = document.createElement('input'); input.type = 'checkbox'; input.setAttribute('role', 'switch');
+    input.checked = !!eyeSprings[option.key];
+    input.addEventListener('change', () => {
+      setEyeSpring(option, input.checked);
+      savedEyeSprings[option.key] = input.checked;
+      try { localStorage.setItem(EYE_SPRING_KEY, JSON.stringify(savedEyeSprings)); } catch (e) { /* 保存できなくても動作は続ける */ }
+      q.set(option.key, input.checked ? '1' : '0');
+      history.replaceState(history.state, '', '?' + q.toString() + location.hash);
+    });
+    label.append(input, option.label);
+    row.appendChild(label);
+  }
+  root.appendChild(row);
+}
 // ---- 母音の口の大きさ（好みに合わせる）。母音を選ぶと、その形のまま口が止まり、スライダーで形を決められる
 let vowelsOut = null;   // 「OBS 用の URL」に入れる、母音の形（初期値と違う物だけ）
 if (model.mouthVector && model.mouthVector.style === 2) {
@@ -3144,6 +3207,7 @@ if (model.mouthVector && model.mouthVector.style === 2) {
     if (model.mouthShapesOut) o.mouthShapes = model.mouthShapesOut();
     if (model.keyMouthShapesOut) o.keyMouthShapes = model.keyMouthShapesOut();
     o.eyeTune = {}; for (const t of EYE_TUNE) o.eyeTune[t.key] = r2(eyeTune[t.key]);
+    for (const { key } of EYE_SPRINGS) if (eyeSprings[key] || model.eyeTune?.[key] === true) o.eyeTune[key] = !!eyeSprings[key];
     if (!ta) makeTa();
     ta.value = JSON.stringify(o, null, 1); ta.select();
     const done = (ok) => { msg.textContent = (ok ? 'コピーしました。' : '下の文字を選んでコピーしてください。') + 'char.json の同じ名前の項目（tune・params・mouthVector・hat・physics_tune・mouthShapes・keyMouthShapes・eyeTune）と置き換えて、モデルを書き出し直すと初期値になります。口の形・口の幅は、「手で動かす」で動かしているときは、そのスライダーの今の値、それ以外のときは、今の初期値です。「動きの好み」の % は、使う人の好みなので、入りません。'; };
@@ -3249,6 +3313,10 @@ $('#obsurl').addEventListener('click', () => {
   if (vowelsOut) { const vo = vowelsOut(); if (Object.keys(vo).length) set.vowels = vo; }
   const p = new URLSearchParams();
   p.set('model', MODEL_NAME); p.set('ui', '0'); p.set('bg', 'transparent');
+  for (const { key } of EYE_SPRINGS) {
+    const enabled = !!eyeSprings[key];
+    if (q.has(key) || enabled !== (model.eyeTune?.[key] === true)) p.set(key, enabled ? '1' : '0');
+  }
   if (!showHair) p.set('hair', '0');
   if (mode === 'camera' || mode === 'demo') p.set('mode', mode);
   p.set('cx', Math.round(VIEW.cx)); p.set('cy', Math.round(VIEW.cy)); p.set('zoom', r3(1060 / VIEW.half));
