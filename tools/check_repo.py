@@ -127,7 +127,7 @@ def check_vendor():
 
 
 def check_python():
-    files = sorted(glob.glob(os.path.join(ROOT, "tools", "*.py")) + glob.glob(os.path.join(ROOT, "partsgen", "tools", "**", "*.py"), recursive=True))
+    files = sorted(glob.glob(os.path.join(ROOT, "tools", "**", "*.py"), recursive=True) + glob.glob(os.path.join(ROOT, "partsgen", "tools", "**", "*.py"), recursive=True))
     broken = []
     for f in files:
         try:

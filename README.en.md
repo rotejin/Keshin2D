@@ -167,6 +167,18 @@ The finished model goes to `models/<name>/` and opens from the selector at the t
 
 The notes from building chiwa (what was observed, the values chosen and what went wrong) are in [partsgen/chars/chiwa/NOTES.md](partsgen/chars/chiwa/NOTES.md).
 
+## Export to Live2D Cubism (VTube Studio, etc.)
+
+Any Keshin2D model under `models/<name>/` can be exported to a Live2D Cubism 3 model folder (`.moc3`, `.model3.json`, `.physics3.json`, `.cdi3.json`, `expressions/*.exp3.json`, and 4096×4096 PNG texture atlases) for use in VTube Studio, LAPLACE Persona, Mochi2D, and other Cubism 3/4/5 apps (requires `numpy` and `pillow` from `tools/requirements.txt`).
+
+```sh
+python tools/export_cubism.py kurage02
+# Or specify input and output folders explicitly
+python tools/export_cubism.py models/<name> exported_cubism/<name>
+```
+
+Copy the exported folder (default `exported_cubism/<name>/`, gitignored) into VTube Studio's `Live2DModels/` directory and run Auto-Setup. Standard tracking parameters (`ParamAngleX/Y/Z`, `ParamBodyAngleX/Z`, `ParamBreath`, `ParamEyeL/ROpen`, `ParamEyeL/RSmile`, `ParamEyeBallX/Y`, `ParamBrowL/RY`, `ParamMouthOpenY/Form`, `ParamCheek`), hair and custom accessory physics, and all 21 expressions (`.exp3.json`) are generated automatically.
+
 ## Documentation
 
 Everything below except this page is in Japanese.
@@ -193,6 +205,7 @@ Folder layout:
 | `models/<name>/` | A model (`model.json` and `parts/*.png`). `kurage02` and `chiwa` are bundled |
 | `models/index.json` | The list for the model selector (`tools/serve.py` adds your own models automatically) |
 | `tools/serve.py` | The local server used by `start.bat` and `start.sh` |
+| `tools/export_cubism.py`, `tools/cubism/` | Exports Keshin2D models to Live2D Cubism format (`.moc3`, `.model3.json`, etc.) |
 | `tools/check_repo.py` | Checks that the repository is complete and consistent |
 | `vendor/mediapipe/` | Webcam face tracking (MediaPipe Tasks Vision 0.10.14 and the Face Landmarker model, with checksums in `SHASUMS256.txt`) |
 | `partsgen/` | Tools and documents for building a new character; `partsgen/chars/` holds the settings, prompts and notes of the two bundled models |

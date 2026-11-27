@@ -32,6 +32,13 @@ MediaPipe Tasks Vision 0.10.14 (Apache License 2.0, by Google) and the Face Land
 
 Product names mentioned in the documents (such as Live2D, Photoshop, and OBS) are trademarks or registered trademarks of their respective owners. This project is not affiliated with any of them.
 
+### Mochi2D（`.moc3` 形式の仕様参考 / `.moc3` format reference）
+
+- 参考: https://github.com/waifucave/mochi2d （MIT License）
+- `tools/cubism/moc3_writer.py` は、Mochi2D がクリーンルームで文書化した `.moc3` のバイナリ仕様を参考に、Python で一から実装した書き出し処理です。Mochi2D や Live2D Cubism SDK のコード・バイナリは同梱していません。
+
+`tools/cubism/moc3_writer.py` is an independent Python writer implemented from scratch using the clean-room `.moc3` binary format specification documented by Mochi2D (MIT License). No code or binaries from Mochi2D or Live2D Cubism SDK are bundled.
+
 ## キャラを作る道具が使う物（同梱していません） / Used by the character tools (not bundled)
 
 各自で入手して、それぞれのライセンス・利用規約に従って使ってください。

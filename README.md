@@ -165,6 +165,18 @@ http://127.0.0.1:8770/index.html?model=kurage02&ui=0&bg=transparent
 
 同梱のチワちゃんを作ったときに、見たこと・決めた値・つまずいた所は、[partsgen/chars/chiwa/NOTES.md](partsgen/chars/chiwa/NOTES.md) に残してあります。
 
+## Live2D Cubism 形式で書き出す（VTube Studio など向け）
+
+`models/<名前>/` のモデルを、Live2D Cubism 3 互換のファイル一式（`.moc3`・`.model3.json`・`.physics3.json`・`.cdi3.json`・`expressions/*.exp3.json`・4096×4096 テクスチャアトラス）へ書き出せます。VTube Studio・LAPLACE Persona・Mochi2D など、Cubism 3/4/5 対応アプリへ読み込めます（`numpy` と `pillow` が要ります。`tools/requirements.txt`）。
+
+```sh
+python tools/export_cubism.py kurage02
+# または、モデルフォルダと出力先を直接指定
+python tools/export_cubism.py models/<名前> exported_cubism/<名前>
+```
+
+書き出したフォルダ（既定では `exported_cubism/<名前>/`。`.gitignore` 対象）を、そのまま VTube Studio の `Live2DModels/` 等へコピーして読み込めます。標準パラメータ（`ParamAngleX/Y/Z`・`ParamBodyAngleX/Z`・`ParamBreath`・`ParamEyeL/ROpen`・`ParamEyeL/RSmile`・`ParamEyeBallX/Y`・`ParamBrowL/RY`・`ParamMouthOpenY/Form`・`ParamCheek` など）、髪・小物の物理、21 種の表情（`.exp3.json`）が自動で組み込まれます。
+
 ## ドキュメント
 
 | 目的 | 読むもの |
@@ -189,6 +201,7 @@ http://127.0.0.1:8770/index.html?model=kurage02&ui=0&bg=transparent
 | `models/<名前>/` | モデル（`model.json` と `parts/*.png`）。同梱は `kurage02` と `chiwa` |
 | `models/index.json` | パネルの「モデルを選ぶ欄」に出すモデルの一覧（`tools/serve.py` で開くと、自分で作ったモデルも自動で足されます） |
 | `tools/serve.py` | 表示用のサーバー（`start.bat`・`start.sh` が使う） |
+| `tools/export_cubism.py`、`tools/cubism/` | Live2D Cubism 形式（`.moc3`・`.model3.json` など）への書き出しツール |
 | `tools/check_repo.py` | リポジトリの中身が、そろっているかの検査 |
 | `vendor/mediapipe/` | Web カメラの顔の追跡（MediaPipe Tasks Vision 0.10.14 と Face Landmarker のモデル。`SHASUMS256.txt` に、取ってきたときのチェックサム） |
 | `partsgen/` | 新しいキャラを作る道具と手順書。`partsgen/chars/` に、同梱の 2 体の設定・指示文・記録 |
