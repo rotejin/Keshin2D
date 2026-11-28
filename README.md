@@ -1,6 +1,6 @@
 # Keshin2D（化身 2D）
 
-<p align="center"><strong>日本語</strong> | <a href="README.en.md">English</a></p>
+<p align="center"><strong>日本語</strong> | <a href="README.en.md">English</a> | <a href="README.zh-CN.md">简体中文</a></p>
 
 <p align="center"><strong>キャラクターの絵を、ブラウザで動かす 2D アバターです。絵 1 枚から、自分のキャラクターのモデルも作れます。</strong></p>
 <p align="center"><strong>A 2D avatar that runs in your browser, with tools to build your own model from one character picture.</strong></p>

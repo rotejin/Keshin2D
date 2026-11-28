@@ -1,6 +1,6 @@
 # Keshin2D
 
-<p align="center"><a href="README.md">日本語</a> | <strong>English</strong></p>
+<p align="center"><a href="README.md">日本語</a> | <strong>English</strong> | <a href="README.zh-CN.md">简体中文</a></p>
 
 <p align="center"><strong>A 2D avatar that runs in your browser, with tools to build your own model from one character picture.</strong></p>
 
