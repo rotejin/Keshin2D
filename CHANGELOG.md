@@ -3,6 +3,15 @@
 このプロジェクトの主な変更を記録します。
 All notable changes to this project are recorded here.
 
+## Unreleased
+
+### 修正 / Fixed
+
+- 操作パネルの行（スライダー・口の色）を、`model.json` の名前や値を HTML として埋め込んで作っていた。細工した `model.json` のモデルを置いて開くと、その中のスクリプトが、ビューアの画面で動いた。今は、名前は文字として、値は入力欄の値としてだけ入れる（見た目と動きは同じ）。
+- `pipeline.py model` で、モデルの名前に `..` や空を渡すと、書き出しの差し替えで、リポジトリそのものや `models/` を消してしまうことがあった。今は、ビューアで開ける名前（英数字と `_`・`-`）だけを受け付ける（`shots`・`audit`・`fidelity` も同じ）。`tools/check_repo.py` で、これを確かめる。
+
+The control panel rows (sliders, mouth colours) were built by putting names and values from `model.json` into HTML, so a crafted `model.json` could run a script in the viewer. Names are now set as text and values as input values only (the panel looks and works the same). `pipeline.py model` could delete the repository or `models/` when given `..` or an empty model name; it now accepts only names the viewer can open (letters, digits, `_` and `-`), as do `shots`, `audit` and `fidelity`. `tools/check_repo.py` checks this.
+
 ## [0.1.0] - 2026-11-25
 
 最初の公開版です。 / First public release.

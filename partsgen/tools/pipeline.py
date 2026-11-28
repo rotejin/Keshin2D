@@ -24,7 +24,7 @@ OpenCV と Real-ESRGAN は日本語のパスを読めないので、英数字だ
 （Windows のユーザー名が日本語、など）は、道具が、英数字だけの別の場所を選ぶ（決め方は kenv.py。check が場所を出す）。
 置き場所ごと変えるのは、環境変数 KESHIN2D_WORK（どの道具にも効く）。--work は、この道具だけ、キャラ 1 体のフォルダを変える。
 """
-import sys, os, json, glob, shutil, subprocess, threading, time, argparse
+import sys, os, re, json, glob, shutil, subprocess, threading, time, argparse
 
 sys.stdout.reconfigure(encoding="utf-8"); sys.stderr.reconfigure(encoding="utf-8")
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -33,6 +33,22 @@ ROOT = os.path.dirname(PARTSGEN)            # Keshin2D
 PY = [sys.executable, "-I"]
 sys.path.insert(0, HERE)
 import kenv
+
+# モデルの名前に使える文字。ビューアの ?model= と同じ（ほかの文字は、ビューアが取り除くので、開けない）
+MODEL_NAME_RE = re.compile(r"[A-Za-z0-9_-]+")
+
+
+def valid_model_name(name):
+    return bool(MODEL_NAME_RE.fullmatch(name or ""))
+
+
+def model_name(o):
+    """コマンドの対象のモデルの名前（引数が無ければ、キャラ名）。ビューアで開ける名前だけを受け付ける。
+    「..」や空の名前だと、書き出しの差し替え（model の rmtree）が、models/ やリポジトリそのものを消してしまう"""
+    name = o.args[0] if o.args else o.char
+    if not valid_model_name(name):
+        sys.exit("モデルの名前は、英数字と _ と - だけにしてください（ビューアの ?model= で開ける名前）: %r" % name)
+    return name
 
 # 番号 -> (出力の名前, 入力 {指示文の中での名前: 作業フォルダの絵})
 JOBS = {
@@ -400,7 +416,7 @@ def face(o):
 
 
 def model(o):
-    name = (o.args[0] if o.args else o.char)
+    name = model_name(o)
     nohair, front, back = need(o, "01_base_nohair"), need(o, "03_front_hair"), need(o, "04_back_hair")
     opt = lambda stem: (os.path.join(o.work, stem + "_3x.png") if os.path.isfile(os.path.join(o.work, stem + "_3x.png")) else "none")
     env = dict(os.environ)
@@ -464,18 +480,18 @@ def model(o):
 
 
 def shots(o):
-    name = (o.args[0] if o.args else o.char)
+    name = model_name(o)
     sys.exit(subprocess.run(PY + [os.path.join(HERE, "regress.py"), "shoot", name, os.path.join(o.work, "_shots")]).returncode)
 
 
 def audit(o):
-    name = (o.args[0] if o.args else o.char)
+    name = model_name(o)
     sys.exit(subprocess.run(PY + ["-X", "utf8", os.path.join(HERE, "parts_audit.py"), os.path.join(ROOT, "models", name), os.path.join(o.work, "_audit")]).returncode)
 
 
 def fidelity(o):
     """元の絵に似ているかを見るための、並べた絵を作る。モデルがまだ無ければ、元の絵と 00_base だけ並べる"""
-    name = (o.args[0] if o.args else o.char)
+    name = model_name(o)
     sys.exit(subprocess.run(PY + [os.path.join(HERE, "fidelity.py"), o.work, o.cfg, name]).returncode)
 
 
