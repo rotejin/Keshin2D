@@ -43,7 +43,7 @@
 
 | 変えた物 | 確かめること |
 |---|---|
-| どれでも | `python tools/check_repo.py` が全部 ok（JSON・モデルの絵のそろい方・チェックサム・文書のリンク・サーバーの起動。ブラウザは使わない） |
+| どれでも | `python tools/check_repo.py` が全部 ok（JSON・モデルの絵のそろい方・チェックサム・文書のリンク・サーバーの起動・書き出しが開けないモデル名を断ること。ブラウザは使わない） |
 | ビューア・エンジン（`index.html`・`js/`） | `node partsgen/tools/uicheck.mjs kurage02 <出力フォルダ>` と `chiwa` が全部 ok（40 項目。画面の操作を、ヘッドレスの Chrome で実際に動かす） |
 | エンジンの動き | 変える前とあとで、同梱のモデルの決まった姿勢を撮って、画素で比べる（`partsgen/tools/regress.py shoot <モデル> <出力>` → `compare <前> <あと>`。乱数を使う `demo_*` の 3 枚のほかは、同じになるはず） |
 | 道具（`partsgen/tools/`） | 同梱のモデルを、別名で書き出し直して（`pipeline.py model <名前> <名前>_t`）、`models/<名前>/` と、ファイルごとに比べる（作業フォルダがある PC でだけ、できる。試しの `models/<名前>_t/` と `start_<名前>_t.bat` は、あとで消す） |

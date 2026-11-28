@@ -2768,12 +2768,22 @@ function setMode(m) {
   if (m !== 'demo' && act.on) actStop();
   if (m === 'demo') act.t0 = null;
 }
+// 操作パネルの 1 行（名前・入力・値の表示）を作る。名前や値は、model.json やブラウザの保存から来ることがあるので、
+// HTML として読ませない（前は innerHTML に埋め込んでいて、細工した model.json の名前や値で、スクリプトが動いた）
+function panelRow(labelText, attrs) {
+  const l = document.createElement('label');
+  l.className = 'sl';
+  const name = document.createElement('span');
+  name.textContent = String(labelText);
+  const inp = document.createElement('input');
+  for (const [k, v] of Object.entries(attrs)) inp.setAttribute(k, String(v));
+  l.append(name, inp, document.createElement('span'));
+  return l;
+}
 function buildSliders(root, list, store, onInput) {
   for (const p of list) {
-    const l = document.createElement('label');
-    l.className = 'sl';
     const step = p.step || (p.max - p.min) / 200;
-    l.innerHTML = `<span>${p.label}</span><input type="range" min="${p.min}" max="${p.max}" step="${step}" value="${store[p.key]}"><span></span>`;
+    const l = panelRow(p.label, { type: 'range', min: p.min, max: p.max, step, value: store[p.key] });
     const inp = l.children[1], val = l.children[2];
     const show = () => { val.textContent = p.fmt ? p.fmt(+inp.value) : (+inp.value).toFixed(p.max > 5 ? 0 : 2); };
     inp.addEventListener('input', () => { store[p.key] = +inp.value; show(); if (onInput) onInput(); });
@@ -2928,8 +2938,7 @@ if (model.mouthVector && !keyMouth) {   // キーの形の口（描いた絵の�
   const root = uiSection('mouthColor', '口の色と線');
   const inputs = [];
   for (const it of mouthItems) {
-    const l = document.createElement('label'); l.className = 'sl';
-    l.innerHTML = `<span>${it.label}</span><input type="color" value="${it.get()}"><span></span>`;
+    const l = panelRow(it.label, { type: 'color', value: it.get() });
     const inp = l.children[1], val = l.children[2];
     const show = () => { val.textContent = inp.value; };
     inp.addEventListener('input', () => { it.set(inp.value); show(); saveMouth(); });
@@ -2937,8 +2946,7 @@ if (model.mouthVector && !keyMouth) {   // キーの形の口（描いた絵の�
     root.appendChild(l);
   }
   for (const sl of [{ key: 'lineWidth', label: '線の太さ', min: 1, max: 12 }, { key: 'teethMax', label: '歯の見える幅', min: 0, max: 30 }]) {
-    const l = document.createElement('label'); l.className = 'sl';
-    l.innerHTML = `<span>${sl.label}</span><input type="range" min="${sl.min}" max="${sl.max}" step="0.1" value="${mv[sl.key]}"><span></span>`;
+    const l = panelRow(sl.label, { type: 'range', min: sl.min, max: sl.max, step: 0.1, value: mv[sl.key] });
     const inp = l.children[1], val = l.children[2];
     const show = () => { val.textContent = (+inp.value).toFixed(1); };
     inp.addEventListener('input', () => { mv[sl.key] = +inp.value; show(); saveMouth(); });

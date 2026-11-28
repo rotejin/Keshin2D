@@ -8,7 +8,7 @@
   2. models/index.json に書いたモデルがあり、model.json が指す絵が、大文字小文字まで同じ名前で全部ある
      （Windows は大文字小文字を区別しないが、GitHub Pages などは区別する）。使われていない絵が残っていない
   3. 同梱の外部の物（vendor/mediapipe）が、SHASUMS256.txt のチェックサムと合う
-  4. Python の道具が、構文エラーなく読める
+  4. Python の道具が、構文エラーなく読める。モデルの書き出し（pipeline.py model）が、開けない名前を断る
   5. 文書（*.md）の中の、リポジトリ内へのリンクと絵が、実際にある
   6. .bat は英数字だけ・CRLF（cmd.exe が読み違えないように）。.ps1 は BOM 付き
   7. 表示用のサーバー（tools/serve.py）が起動して、ビューアとモデルを配れる
@@ -138,6 +138,33 @@ def check_python():
     say(not broken, "Python の道具が、構文エラーなく読める（%d ファイル）" % len(files) + (": " + " / ".join(broken) if broken else ""))
 
 
+def check_model_names():
+    # pipeline.py model の書き出しは、models/<名前>/ を差し替える（消してから置く）。
+    # 「..」や空の名前だと、リポジトリそのものや models/ を消してしまうので、ビューアで開ける名前だけを通す。
+    # 確かめる時の作業フォルダは一時フォルダにする。名前の検査が無くても、元の絵が無いので消す所までは進まない。
+    # -B: 確かめるだけで、partsgen/tools/__pycache__ を作らない
+    import tempfile
+    tools = os.path.join(ROOT, "partsgen", "tools")
+    code = (
+        "import sys; sys.path.insert(0, %r); import pipeline\n"
+        "bad = [n for n in ['..', '', '.', 'a/b', 'a\\\\b', '名前', 'a b', 'x&y'] if pipeline.valid_model_name(n)]\n"
+        "good = [n for n in ['kurage02', 'chiwa', 'my-chara_2'] if not pipeline.valid_model_name(n)]\n"
+        "print(repr((bad, good)))\n" % tools
+    )
+    problems = []
+    with tempfile.TemporaryDirectory() as work:
+        env = dict(os.environ, KESHIN2D_WORK=work, PYTHONIOENCODING="utf-8")
+        r = subprocess.run([sys.executable, "-I", "-B", "-c", code], capture_output=True, text=True, encoding="utf-8", env=env)
+        if r.returncode != 0 or r.stdout.strip() != "([], [])":
+            problems.append("名前の判定: " + (r.stdout.strip() or r.stderr.strip()[-200:]))
+        for name in ("..", ""):
+            r = subprocess.run([sys.executable, "-I", "-B", os.path.join(tools, "pipeline.py"), "model", "kurage02", name],
+                               capture_output=True, text=True, encoding="utf-8", env=env)
+            if r.returncode == 0 or "モデルの名前" not in (r.stdout + r.stderr):
+                problems.append("pipeline.py model kurage02 %r が止まらない" % name)
+    say(not problems, "モデルの書き出しが、ビューアで開けない名前（.. や空など）を断る" + ("（%s）" % " / ".join(problems) if problems else ""))
+
+
 LINK = re.compile(r"\]\(([^)\s]+)\)|(?:src|href)=\"([^\"]+)\"")
 
 
@@ -223,6 +250,7 @@ def main():
     check_json_and_models()
     check_vendor()
     check_python()
+    check_model_names()
     check_links()
     check_scripts()
     check_server()
