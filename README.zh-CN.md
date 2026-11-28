@@ -6,7 +6,7 @@ Keshin2D 可以让角色立绘在浏览器里动起来。你可以用鼠标或�
 
 **[在浏览器里尝试](https://rotejin.github.io/Keshin2D/)**。无需安装，打开后即可预览效果。左侧面板顶部可以切换两个自带角色。
 
-![Keshin2D 自带的两个角色正在播放自动演出](docs/images/demo.webp)
+![Keshin2D 自带的两个角色的演出预览](docs/images/demo.webp)
 
 ## 在自己电脑上运行
 
